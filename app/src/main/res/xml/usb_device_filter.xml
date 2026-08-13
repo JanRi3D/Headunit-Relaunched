@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Google's vendor id (0x18D1) with the six AOA accessory product ids
+  (0x2D00-0x2D05). This filter only exists so the launcher auto-starts us when a
+  phone already in accessory mode is plugged in.
+
+  Detecting a *fresh* phone (before the AOA switch) is done with a
+  runtime-registered receiver in HeadUnitService, which sees every attach
+  regardless of this list.
+-->
+<resources>
+    <usb-device vendor-id="6353" product-id="11520" />
+    <usb-device vendor-id="6353" product-id="11521" />
+    <usb-device vendor-id="6353" product-id="11522" />
+    <usb-device vendor-id="6353" product-id="11523" />
+    <usb-device vendor-id="6353" product-id="11524" />
+    <usb-device vendor-id="6353" product-id="11525" />
+</resources>

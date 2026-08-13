@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Headunit Relaunched</string>
+    <string name="status_idle">Idle - plug in a phone or tap a button</string>
+    <string name="connect_usb">USB</string>
+    <string name="connect_wifi">Wi-Fi</string>
+    <string name="connect_ip">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="hint_phone_ip">Phone IP, e.g. 192.168.1.42</string>
+    <string name="hint_headunit_server">On the phone: Android Auto - Developer settings - Start head unit server (port 5277)</string>
 </resources>
