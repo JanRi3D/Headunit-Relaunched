@@ -6,8 +6,10 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 
 import me.ri3d.headunit.relaunched.util.Logger;
 import me.ri3d.headunit.relaunched.util.Utils;
@@ -76,19 +78,25 @@ public final class UsbAoa {
     }
 
     /**
-     * First attached device that is a plausible phone, i.e. not already in
-     * accessory mode and not a hub. We do not try to whitelist vendors -- any
-     * device that answers request 51 with a protocol >= 1 speaks AOA.
+     * Every attached device that could plausibly be a phone: not already in
+     * accessory mode, not a hub.
+     *
+     * A real head unit has several permanent USB devices on its bus (MCU
+     * bridges, CAN boxes, touch controllers), so picking just the first one
+     * finds an internal peripheral and never reaches the phone. We do not
+     * whitelist vendors -- anything that answers request 51 with protocol >= 1
+     * speaks AOA, and anything that does not fails in about a second.
      */
-    public static UsbDevice findCandidate(UsbManager um) {
+    public static List<UsbDevice> findCandidates(UsbManager um) {
+        List<UsbDevice> out = new ArrayList<UsbDevice>();
         HashMap<String, UsbDevice> list = um.getDeviceList();
         for (Iterator<UsbDevice> it = list.values().iterator(); it.hasNext(); ) {
             UsbDevice d = it.next();
             if (isAccessory(d)) continue;
             if (d.getDeviceClass() == UsbConstants.USB_CLASS_HUB) continue;
-            return d;
+            out.add(d);
         }
-        return null;
+        return out;
     }
 
     /**

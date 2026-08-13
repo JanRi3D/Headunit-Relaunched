@@ -10,6 +10,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
@@ -66,6 +67,7 @@ public final class HeadUnitService extends Service {
 
     private int mode = MODE_USB;
     private BluetoothDevice btDevice;
+    private UsbDevice usbDevice;
     private String host;
     private volatile boolean wantConnected;
 
@@ -88,7 +90,12 @@ public final class HeadUnitService extends Service {
         @Override public void onReceive(Context c, Intent i) {
             String action = i.getAction();
             if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
-                Logger.i("service: USB attached");
+                // Remember exactly which device appeared -- on a head unit the
+                // bus is full of internal peripherals and scanning finds those
+                // first.
+                usbDevice = (UsbDevice) i.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                Logger.i("service: USB attached"
+                        + (usbDevice != null ? " " + usbDevice.getDeviceName() : ""));
                 if (session == null) connect(MODE_USB, null, null);
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
                 Logger.i("service: USB detached");
@@ -167,7 +174,7 @@ public final class HeadUnitService extends Service {
         } else if (mode == MODE_WIFI) {
             t = new WifiTransport(bt);
         } else {
-            t = new UsbTransport(this);
+            t = new UsbTransport(this, usbDevice);
         }
 
         AndroidAutoSession s = new AndroidAutoSession(t, ssl, listenerFor(gen));

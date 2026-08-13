@@ -14,6 +14,7 @@ import android.hardware.usb.UsbManager;
 import android.os.Build;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -37,6 +38,8 @@ public final class UsbTransport implements Transport {
 
     private final Context ctx;
     private final UsbManager usb;
+    /** Device from the ATTACHED broadcast, tried first. May be null. */
+    private final UsbDevice preferred;
 
     private UsbDevice device;
     private UsbDeviceConnection conn;
@@ -54,8 +57,14 @@ public final class UsbTransport implements Transport {
             (Build.VERSION.SDK_INT >= 18) ? null : new byte[64 * 1024];
 
     public UsbTransport(Context ctx) {
+        this(ctx, null);
+    }
+
+    /** @param preferred device from the ATTACHED broadcast, or null to scan. */
+    public UsbTransport(Context ctx, UsbDevice preferred) {
         this.ctx = ctx.getApplicationContext();
         this.usb = (UsbManager) this.ctx.getSystemService(Context.USB_SERVICE);
+        this.preferred = preferred;
     }
 
     @Override public String name() { return "USB"; }
@@ -66,28 +75,47 @@ public final class UsbTransport implements Transport {
 
         UsbDevice dev = UsbAoa.findAccessory(usb);
         if (dev == null) {
-            // Nothing in accessory mode yet -- try to flip a plain phone over.
-            UsbDevice candidate = UsbAoa.findCandidate(usb);
-            if (candidate == null) {
+            // Nothing in accessory mode yet -- try to flip a phone over. A head
+            // unit's bus carries several permanent peripherals, so try every
+            // candidate rather than assuming the first one is the phone. The
+            // device from the ATTACHED broadcast goes first: it is by definition
+            // the thing the user just plugged in.
+            List<UsbDevice> candidates = UsbAoa.findCandidates(usb);
+            if (preferred != null) {
+                candidates.remove(preferred);
+                candidates.add(0, preferred);
+            }
+            if (candidates.isEmpty()) {
                 Logger.i("USB: no device attached");
                 return false;
             }
-            Logger.i("USB: candidate " + candidate.getDeviceName()
-                    + " " + hex4(candidate.getVendorId()) + ":" + hex4(candidate.getProductId()));
 
-            if (!requestPermission(candidate)) {
-                Logger.w("USB: permission denied");
+            boolean started = false;
+            for (int i = 0; i < candidates.size() && !started; i++) {
+                UsbDevice candidate = candidates.get(i);
+                Logger.i("USB: trying " + candidate.getDeviceName() + " "
+                        + hex4(candidate.getVendorId()) + ":" + hex4(candidate.getProductId())
+                        + " (" + (i + 1) + "/" + candidates.size() + ")");
+
+                if (!requestPermission(candidate)) {
+                    Logger.w("USB: permission denied, skipping");
+                    continue;
+                }
+                UsbDeviceConnection c = usb.openDevice(candidate);
+                if (c == null) {
+                    Logger.w("USB: openDevice failed, skipping");
+                    continue;
+                }
+                try {
+                    started = UsbAoa.startAccessoryMode(c);
+                } finally {
+                    c.close(); // on success the device is about to disappear
+                }
+            }
+            if (!started) {
+                Logger.w("USB: no attached device speaks AOA");
                 return false;
             }
-            UsbDeviceConnection c = usb.openDevice(candidate);
-            if (c == null) throw new IOException("openDevice failed");
-            boolean started;
-            try {
-                started = UsbAoa.startAccessoryMode(c);
-            } finally {
-                c.close(); // the device is about to disappear anyway
-            }
-            if (!started) return false;
 
             dev = waitForAccessory();
             if (dev == null) throw new IOException("phone did not re-enumerate in accessory mode");
