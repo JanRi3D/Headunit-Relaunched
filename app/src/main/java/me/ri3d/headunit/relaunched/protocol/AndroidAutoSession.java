@@ -6,6 +6,7 @@ import java.io.IOException;
 
 import me.ri3d.headunit.relaunched.transport.Transport;
 import me.ri3d.headunit.relaunched.util.Logger;
+import me.ri3d.headunit.relaunched.video.VideoChannel;
 
 import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
 
@@ -22,9 +23,18 @@ import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
  */
 public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
 
+    /**
+     * End reason for a shutdown the phone asked for -- Android Auto's own exit
+     * button. The service matches on it to decide not to reconnect, so it is a
+     * constant rather than a message typed twice.
+     */
+    public static final String REASON_SHUTDOWN = "closed by Android Auto";
+
     public interface Listener {
         void onSessionState(String state);
         void onSessionEnded(String reason);
+        /** The phone started or stopped drawing. False means our UI has the screen. */
+        void onVideoFocus(boolean projected);
     }
 
     private final Transport transport;
@@ -41,6 +51,9 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
     private volatile boolean running;
     private volatile Surface pendingSurface;
 
+    /** Overrides the reason run() would otherwise report. Set on a clean exit. */
+    private volatile String endReason;
+
     public AndroidAutoSession(Transport transport, Ssl ssl, Listener listener) {
         this.transport = transport;
         this.ssl = ssl;
@@ -49,6 +62,13 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
         this.writer = new MessageWriter(transport);
         this.handshake = new HandshakeManager(writer, ssl);
         this.channels = new ChannelManager(writer);
+        this.channels.video.setFocusListener(new VideoChannel.FocusListener() {
+            @Override public void onVideoFocus(boolean projected) {
+                if (AndroidAutoSession.this.listener != null) {
+                    AndroidAutoSession.this.listener.onVideoFocus(projected);
+                }
+            }
+        });
     }
 
     public ChannelManager channels() { return channels; }
@@ -107,6 +127,10 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
             Logger.e("session: unexpected failure", e);
         } finally {
             running = false;
+            // A clean shutdown beats whatever the read loop reported on its way
+            // out: closing the transport underneath ourselves usually surfaces
+            // as an IOException a moment later.
+            if (endReason != null) reason = endReason;
             channels.release();
             transport.close();
             Logger.i("session: ended (" + reason + ")");
@@ -221,15 +245,21 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
             }
 
             case MSG_SHUTDOWN_REQUEST: {
-                Logger.i("control: phone requested shutdown");
+                // This is Android Auto's exit button. ShutdownReason 1 = QUIT.
+                long why = Messages.varintField(reader, buf, off, len, 1, 0);
+                Logger.i("control: phone requested shutdown, reason " + why);
                 Proto.W w = writer.begin();
                 Messages.shutdownResponse(w);
                 writer.end(CH_CONTROL, MSG_SHUTDOWN_RESPONSE);
+                // Say why, so the service does not helpfully reconnect three
+                // seconds later and put Android Auto straight back on screen.
+                endReason = REASON_SHUTDOWN;
                 running = false;
                 break;
             }
 
             case MSG_SHUTDOWN_RESPONSE:
+                endReason = REASON_SHUTDOWN;
                 running = false;
                 break;
 

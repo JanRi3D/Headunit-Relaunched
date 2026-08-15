@@ -25,13 +25,44 @@ public final class Config {
     public static final boolean LEFT_HAND_DRIVE = true;
 
     // ---- video -------------------------------------------------------------
-    public static final int VIDEO_RESOLUTION = ProtocolConstants.RES_800x480;
+
+    /** Not a wire value: "work the resolution out from the panel at startup". */
+    public static final int RES_AUTO = 0;
+
+    /**
+     * Starting resolution: RES_AUTO, or a fixed VideoCodecResolutionType. Only
+     * the default -- the Resolution button overrides it at runtime and the
+     * choice is kept in SharedPreferences. See {@link Settings}.
+     */
+    public static final int VIDEO_RESOLUTION = RES_AUTO;
     public static final int VIDEO_FPS        = ProtocolConstants.FPS_30;
-    public static final int VIDEO_WIDTH      = 800;
-    public static final int VIDEO_HEIGHT     = 480;
-    public static final int VIDEO_DPI        = 140;
     public static final int VIDEO_MARGIN_W   = 0;
     public static final int VIDEO_MARGIN_H   = 0;
+
+    /**
+     * Starting UI density in dpi, quoted against an 800-pixel-wide stream.
+     * Higher draws AA's UI larger, because the same pixels become fewer dp
+     * (px = dp * dpi/160). At 800x480: 120 -> 1066x640 dp, 140 -> 914x548,
+     * 160 -> 800x480, 200 -> 640x384.
+     *
+     * The setting is actually stored as the resulting dp width, which means the
+     * same thing at every resolution -- see {@link Settings}. This constant is
+     * only the starting point, so it stays in the units you would look up.
+     */
+    public static final int VIDEO_DPI = 140;
+
+    /** Config.VIDEO_DPI expressed the way Settings holds it. */
+    public static int defaultWidthDp() { return 800 * 160 / VIDEO_DPI; }
+
+    /** One press of Smaller/Bigger. Resolution-independent, being in dp. */
+    public static final int WIDTH_DP_STEP = 64;
+
+    /**
+     * The scale range. Below ~480dp AA runs out of room to lay out in and
+     * starts refusing or mislaying things; past ~1280dp everything is tiny.
+     */
+    public static final int MIN_WIDTH_DP = 480;
+    public static final int MAX_WIDTH_DP = 1280;
 
     /**
      * Extra decoder input latency budget in microseconds. dequeueInputBuffer

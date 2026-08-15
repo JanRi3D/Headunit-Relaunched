@@ -14,6 +14,7 @@ import me.ri3d.headunit.relaunched.transport.Transport;
 import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -195,6 +196,152 @@ public class ProtocolTest {
         // someone "fixed" the ordering back to the intuitive one.
         assertEquals("Config asks for 30fps, which is enum value 2", FPS_30, fps);
         assertEquals(2, FPS_30);
+    }
+
+    /**
+     * Density must be read from Settings, not from Config. Both hold 140 by
+     * default, so a regression to the compile-time constant would look fine in
+     * every other test while making the Smaller/Bigger buttons do nothing.
+     */
+    @Test
+    public void videoDensityFollowsSettings() {
+        int saved = Settings.widthDp();
+        try {
+            Settings.applyWidthDp(640);
+            assertEquals(800 * 160 / 640, densityInDiscoveryResponse());
+            Settings.applyWidthDp(1066);
+            assertEquals(800 * 160 / 1066, densityInDiscoveryResponse());
+            // And the range is enforced on the way in, not at the buttons.
+            Settings.applyWidthDp(Config.MAX_WIDTH_DP + 500);
+            assertEquals(800 * 160 / Config.MAX_WIDTH_DP, densityInDiscoveryResponse());
+        } finally {
+            Settings.applyWidthDp(saved);
+        }
+    }
+
+    /**
+     * The scale is stored in dp, so the same setting has to survive a resolution
+     * change. Storing dpi instead was a real bug: auto-detection moving 800 ->
+     * 1280 left the old number in place and AA came out half size.
+     */
+    @Test
+    public void scaleSurvivesResolutionChange() {
+        int savedMode = Settings.resolutionMode(), savedDp = Settings.widthDp();
+        int pw = Settings.panelWidth(), ph = Settings.panelHeight();
+        try {
+            Settings.applyPanelSize(1920, 1080); // a panel that permits anything
+
+            Settings.applyResolution(RES_800x480);
+            Settings.applyWidthDp(Config.defaultWidthDp());
+            assertEquals(Config.VIDEO_DPI, Settings.videoDpi());
+            int layoutAt480p = Settings.widthDp();
+
+            Settings.applyResolution(RES_1920x1080);
+            assertEquals(1920, Settings.videoWidth());
+            assertEquals(1080, Settings.videoHeight());
+            assertEquals("the layout AA sees must not change with resolution",
+                    layoutAt480p, Settings.widthDp());
+            assertEquals("so the density has to scale with the stream instead",
+                    Config.VIDEO_DPI * 1920 / 800, Settings.videoDpi());
+            assertEquals(Config.VIDEO_DPI * 1920 / 800, densityInDiscoveryResponse());
+        } finally {
+            Settings.applyPanelSize(pw, ph);
+            Settings.applyResolution(savedMode);
+            Settings.applyWidthDp(savedDp);
+        }
+    }
+
+    /**
+     * Asking for more pixels than the panel can show makes the display scaler
+     * downscale every frame, which is what stalls video on MediaTek units. The
+     * cap applies to a manual choice too, not just to AUTO.
+     */
+    @Test
+    public void resolutionIsCappedToThePanel() {
+        assertEquals(RES_800x480, Settings.autoResolution(800, 480));
+        assertEquals(RES_1280x720, Settings.autoResolution(1024, 600));
+        assertEquals(RES_1280x720, Settings.autoResolution(1280, 720));
+        assertEquals(RES_1920x1080, Settings.autoResolution(1920, 1080));
+        // Unmeasured panel: assume the floor rather than overshoot.
+        assertEquals(RES_800x480, Settings.autoResolution(0, 0));
+
+        int savedMode = Settings.resolutionMode(), savedDp = Settings.widthDp();
+        int pw = Settings.panelWidth(), ph = Settings.panelHeight();
+        try {
+            Settings.applyPanelSize(800, 480);
+            Settings.applyResolution(RES_1920x1080);
+            assertEquals("manual 1080p must come back down to the panel",
+                    RES_800x480, Settings.videoResolution());
+            assertEquals("but the request itself is remembered",
+                    RES_1920x1080, Settings.resolutionMode());
+            assertTrue("and the cap has to be visible to the UI",
+                    Settings.resolutionWasCapped());
+            assertEquals(RES_800x480, resolutionInDiscoveryResponse());
+
+            // A panel that can take it is left alone.
+            Settings.applyPanelSize(1920, 1080);
+            Settings.applyResolution(RES_1920x1080);
+            assertEquals(RES_1920x1080, Settings.videoResolution());
+            assertFalse(Settings.resolutionWasCapped());
+            assertEquals(RES_1920x1080, resolutionInDiscoveryResponse());
+            assertEquals(1920, touchScreenWidthInDiscoveryResponse());
+        } finally {
+            Settings.applyPanelSize(pw, ph);
+            Settings.applyResolution(savedMode);
+            Settings.applyWidthDp(savedDp);
+        }
+    }
+
+    private static int densityInDiscoveryResponse() { return videoConfig(5); }
+    private static int resolutionInDiscoveryResponse() { return videoConfig(1); }
+
+    /**
+     * video channel -> media_sink_service (3) -> video_configs (4) -> field.
+     * 1 = codec_resolution, 2 = frame_rate, 5 = density.
+     */
+    private static int videoConfig(int field) {
+        return channelSubField(CH_VIDEO, 3, 4, field);
+    }
+
+    /** input channel -> input_source_service (4) -> touch_screen_config (2). */
+    private static int touchScreenWidthInDiscoveryResponse() {
+        return channelSubField(CH_INPUT, 4, 2, 1);
+    }
+
+    /**
+     * Digs one varint out of the discovery response, three levels down:
+     * channel[channelId].service.config.field.
+     */
+    private static int channelSubField(int channelId, int service, int config, int field) {
+        Proto.W w = new Proto.W(1024);
+        Messages.serviceDiscoveryResponse(w);
+
+        Proto.R r = new Proto.R().set(w.buf, 0, w.pos);
+        while (r.next()) {
+            if (r.field != 1 || r.wire != Proto.WIRE_BYTES) { r.skip(); continue; }
+            Proto.R ch = r.nested(new Proto.R());
+            int id = -1;
+            while (ch.next()) {
+                if (ch.field == 1 && ch.wire == Proto.WIRE_VARINT) {
+                    id = (int) ch.varint();
+                } else if (ch.field == service && ch.wire == Proto.WIRE_BYTES && id == channelId) {
+                    Proto.R svc = ch.nested(new Proto.R());
+                    while (svc.next()) {
+                        if (svc.field != config || svc.wire != Proto.WIRE_BYTES) { svc.skip(); continue; }
+                        Proto.R cfg = svc.nested(new Proto.R());
+                        while (cfg.next()) {
+                            if (cfg.field == field && cfg.wire == Proto.WIRE_VARINT) {
+                                return (int) cfg.varint();
+                            }
+                            cfg.skip();
+                        }
+                    }
+                } else {
+                    ch.skip();
+                }
+            }
+        }
+        return -1; // field not present at all
     }
 
     // =====================================================================

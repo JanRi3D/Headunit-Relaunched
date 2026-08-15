@@ -1,6 +1,7 @@
 package me.ri3d.headunit.relaunched.protocol;
 
 import me.ri3d.headunit.relaunched.Config;
+import me.ri3d.headunit.relaunched.Settings;
 
 import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
 
@@ -70,8 +71,10 @@ public final class Messages {
 
                 int touch = w.begin(2); // touch_screen_config
                 {
-                    w.u32(1, Config.VIDEO_WIDTH);
-                    w.u32(2, Config.VIDEO_HEIGHT);
+                    // Must match the video stream size, not the panel: touch
+                    // coordinates are sent in stream pixels.
+                    w.u32(1, Settings.videoWidth());
+                    w.u32(2, Settings.videoHeight());
                 }
                 w.end(touch);
             }
@@ -105,11 +108,13 @@ public final class Messages {
                 w.u32(2, AUDIO_TYPE_NONE);
                 int vc = w.begin(4);           // video_configs
                 {
-                    w.u32(1, Config.VIDEO_RESOLUTION); // codec_resolution
+                    w.u32(1, Settings.videoResolution()); // codec_resolution
                     w.u32(2, Config.VIDEO_FPS);        // frame_rate
                     w.u32(3, Config.VIDEO_MARGIN_W);
                     w.u32(4, Config.VIDEO_MARGIN_H);
-                    w.u32(5, Config.VIDEO_DPI);        // density
+                    // Runtime-adjustable, so read it here rather than at class
+                    // init: this is the one place the phone ever asks for it.
+                    w.u32(5, Settings.videoDpi());     // density
                     w.u32(10, CODEC_VIDEO_H264_BP);    // video_codec_type
                 }
                 w.end(vc);

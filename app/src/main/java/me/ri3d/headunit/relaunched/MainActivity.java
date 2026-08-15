@@ -15,6 +15,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
@@ -43,6 +44,8 @@ public final class MainActivity extends Activity
     private SurfaceView surfaceView;
     private View overlay;
     private TextView status;
+    private TextView dpiValue;
+    private Button resolutionButton;
     private EditText editIp;
     private SharedPreferences prefs;
 
@@ -53,6 +56,14 @@ public final class MainActivity extends Activity
     private boolean bound;
     /** True from "authenticated" until the session ends; hides the overlay. */
     private boolean projecting;
+    /** Long-press BACK forces the panel back over a live session. */
+    private boolean overlayPinned;
+    /**
+     * True while the phone holds video focus NATIVE, i.e. it has stopped drawing
+     * and is waiting to be told it may start again. Hiding the panel has to
+     * claim focus back, or the screen just stays black.
+     */
+    private boolean phoneReleasedScreen;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,8 +80,26 @@ public final class MainActivity extends Activity
         surfaceView.setOnTouchListener(touchInput);
 
         editIp = (EditText) findViewById(R.id.edit_ip);
-        prefs = getSharedPreferences("headunit", MODE_PRIVATE);
+        prefs = Settings.prefs(this);
         editIp.setText(prefs.getString(PREF_PHONE_IP, ""));
+
+        // The service loads these too, but it may not exist yet -- bindService
+        // below is asynchronous and the label has to be right now.
+        Settings.load(this);
+        dpiValue = (TextView) findViewById(R.id.dpi_value);
+        findViewById(R.id.btn_dpi_down).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { stepScale(-1); }
+        });
+        findViewById(R.id.btn_dpi_up).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { stepScale(1); }
+        });
+
+        resolutionButton = (Button) findViewById(R.id.btn_resolution);
+        resolutionButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { cycleResolution(); }
+        });
+        showResolution();
+        showDpi();
 
         findViewById(R.id.btn_usb).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -157,10 +186,79 @@ public final class MainActivity extends Activity
         connect(HeadUnitService.MODE_WIFI_DIAL, null, ip);
     }
 
+    /**
+     * Nudge how large AA draws its UI. +1 is bigger, which is fewer dp across
+     * the same pixels -- the fix for a cramped screen. See Settings.widthDp().
+     */
+    private void stepScale(int steps) {
+        int before = Settings.widthDp();
+        Settings.stepScale(this, steps);
+        showDpi();
+        if (Settings.widthDp() == before) return; // already at the limit
+        renegotiate(Settings.videoDpi() + " dpi");
+    }
+
+    /**
+     * Auto -> 480p -> 720p -> 1080p -> Auto. A cycling button rather than a
+     * spinner: four choices, and a head unit touchscreen is not precise enough
+     * for a dropdown you have to hit twice.
+     */
+    private void cycleResolution() {
+        int[] choices = Settings.resolutionChoices();
+        int at = 0;
+        for (int i = 0; i < choices.length; i++) {
+            if (choices[i] == Settings.resolutionMode()) { at = i; break; }
+        }
+        int before = Settings.videoWidth();
+        Settings.setResolution(this, choices[(at + 1) % choices.length]);
+        showResolution();
+        showDpi();
+        if (Settings.videoWidth() == before) return; // the cap held it in place
+        renegotiate(Settings.name(Settings.videoResolution()));
+    }
+
+    /**
+     * Both of these travel only in the service discovery response, so a live
+     * session has to be rebuilt before the change is visible.
+     */
+    private void renegotiate(String what) {
+        if (service == null || !service.isConnected()) return;
+        projecting = false;
+        updateOverlay();
+        // Stays pinned across the reconnect, so you can keep stepping until it
+        // looks right instead of holding BACK after every try.
+        setStatus("reconnecting at " + what);
+        service.reconnect();
+    }
+
+    private void showDpi() {
+        dpiValue.setText(getString(R.string.dpi_format,
+                Settings.videoDpi(), Settings.widthDp(), Settings.heightDp()));
+    }
+
+    private void showResolution() {
+        String mode = (Settings.resolutionMode() == Config.RES_AUTO)
+                ? getString(R.string.res_auto)
+                : Settings.name(Settings.resolutionMode());
+        // Say so when the panel cap overrode the request, rather than letting
+        // the button look like it ignored the tap.
+        resolutionButton.setText(Settings.resolutionWasCapped()
+                ? getString(R.string.res_format_capped, mode,
+                        Settings.videoWidth(), Settings.videoHeight(),
+                        Settings.panelWidth(), Settings.panelHeight())
+                : getString(R.string.res_format, mode,
+                        Settings.videoWidth(), Settings.videoHeight()));
+    }
+
     private void connect(int mode, BluetoothDevice bt, String host) {
         if (service == null) { setStatus("service not ready"); return; }
+        overlayPinned = false;
         service.connect(mode, bt, host);
         setChannels(true);
+    }
+
+    private void updateOverlay() {
+        overlay.setVisibility(projecting && !overlayPinned ? View.GONE : View.VISIBLE);
     }
 
     /** Point the input listeners at the live session, or detach them. */
@@ -206,15 +304,30 @@ public final class MainActivity extends Activity
         // channels", so testing the current state put the overlay straight back
         // over the video. Once the session is up it stays hidden until it drops.
         if ("authenticated".equals(state)) projecting = true;
-        overlay.setVisibility(projecting ? View.GONE : View.VISIBLE);
+        updateOverlay();
     }
 
     @Override
     public void onEnded(String reason) {
         projecting = false;
+        overlayPinned = false;
+        phoneReleasedScreen = false;
         setStatus("disconnected: " + reason);
-        overlay.setVisibility(View.VISIBLE);
+        updateOverlay();
         setChannels(false);
+    }
+
+    /**
+     * Android Auto's exit-to-car button takes this route rather than shutting
+     * the session down: it drops video focus to NATIVE and waits. Show our own
+     * UI, which is the only thing a head unit can sensibly do with the screen.
+     */
+    @Override
+    public void onVideoFocus(boolean projected) {
+        phoneReleasedScreen = !projected;
+        overlayPinned = !projected;
+        if (!projected) setStatus(getString(R.string.status_screen_returned));
+        updateOverlay();
     }
 
     // ---- SurfaceHolder.Callback -------------------------------------------
@@ -236,14 +349,62 @@ public final class MainActivity extends Activity
 
     // ---- hardware keys -----------------------------------------------------
 
+    /**
+     * BACK is overloaded: a tap goes to Android Auto, holding it brings this
+     * panel back over the video (otherwise there is no way to reach the scale
+     * buttons or Disconnect once projection starts).
+     *
+     * That means AA must not see the press until we know which it was, so the
+     * down is held here and replayed as a press+release from onKeyUp. Everything
+     * else goes straight through.
+     */
+    private boolean backWasLongPress;
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.getRepeatCount() == 0) {
+                // Required, together with returning true, for the framework to
+                // deliver onKeyLongPress at all.
+                event.startTracking();
+                backWasLongPress = false;
+            }
+            return true;
+        }
         if (keyInput.onKey(keyCode, event)) return true;
         return super.onKeyDown(keyCode, event);
     }
 
     @Override
+    public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+        // Only while projecting: idle, the panel is already up and a long BACK
+        // should still leave the app the way it normally does. It would also
+        // leave the pin set for a session the user never started by hand.
+        if (keyCode == KeyEvent.KEYCODE_BACK && projecting) {
+            backWasLongPress = true;
+            overlayPinned = !overlayPinned;
+            // Going back to Android Auto after it handed the screen over means
+            // asking for it: it will not resume on its own.
+            if (!overlayPinned && phoneReleasedScreen && service != null) {
+                phoneReleasedScreen = false;
+                setStatus("resuming Android Auto");
+                service.resumeProjection();
+            }
+            updateOverlay();
+            return true;
+        }
+        return super.onKeyLongPress(keyCode, event);
+    }
+
+    @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (backWasLongPress) return true;
+            // Short press: hand it to AA, or fall back to leaving the app when
+            // there is no session to hand it to.
+            if (keyInput.tap(keyCode)) return true;
+            return super.onKeyUp(keyCode, event);
+        }
         if (keyInput.onKey(keyCode, event)) return true;
         return super.onKeyUp(keyCode, event);
     }

@@ -118,10 +118,21 @@ public final class ProtocolConstants {
     public static final int AUDIO_TYPE_SYSTEM = 2;
     public static final int AUDIO_TYPE_MEDIA  = 3;
 
-    /** VideoCodecResolutionType. */
+    /**
+     * VideoCodecResolutionType, whole. Only the first three are offered: 4 and 5
+     * want HEVC in practice, and 6-9 are for portrait panels, which a head unit
+     * is not. They are listed anyway because a wire enum is easier to trust when
+     * you can see all of it.
+     */
     public static final int RES_800x480   = 1;
     public static final int RES_1280x720  = 2;
     public static final int RES_1920x1080 = 3;
+    public static final int RES_2560x1440 = 4;
+    public static final int RES_3840x2160 = 5;
+    public static final int RES_720x1280  = 6;
+    public static final int RES_1080x1920 = 7;
+    public static final int RES_1440x2560 = 8;
+    public static final int RES_2160x3840 = 9;
 
     /**
      * VideoFrameRateType. Note the ordering: 60 comes first, 30 second. Getting

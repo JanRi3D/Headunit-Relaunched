@@ -7,4 +7,15 @@
     <string name="disconnect">Disconnect</string>
     <string name="hint_phone_ip">Phone IP, e.g. 192.168.1.42</string>
     <string name="hint_headunit_server">On the phone: Android Auto - Developer settings - Start head unit server (port 5277)</string>
+    <string name="hint_overlay_toggle">Hold BACK while projecting to show or hide this panel</string>
+    <string name="status_screen_returned">Android Auto gave the screen back - hold BACK to return to it</string>
+    <string name="dpi_smaller">Smaller</string>
+    <string name="dpi_bigger">Bigger</string>
+    <!-- e.g. "UI scale: 140 dpi (914 x 549 dp)" -->
+    <string name="dpi_format">UI scale: %1$d dpi (%2$d x %3$d dp)</string>
+    <!-- e.g. "Resolution: Auto - 800x480" -->
+    <string name="res_format">Resolution: %1$s - %2$d x %3$d</string>
+    <!-- e.g. "Resolution: 1080p - capped to 800x480 (panel 800x480)" -->
+    <string name="res_format_capped">Resolution: %1$s - capped to %2$d x %3$d (panel %4$d x %5$d)</string>
+    <string name="res_auto">Auto</string>
 </resources>

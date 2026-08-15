@@ -13,11 +13,21 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <LinearLayout
+    <!--
+      Scrolls because the control block is now taller than an 800x480 panel once
+      the software keyboard is up. It only ever composites while the overlay is
+      visible, which is never while projecting.
+    -->
+    <ScrollView
         android:id="@+id/overlay"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp">
 
@@ -80,6 +90,41 @@
                 android:text="@string/connect_ip" />
         </LinearLayout>
 
+        <Button
+            android:id="@+id/btn_resolution"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingTop="8dp">
+
+            <Button
+                android:id="@+id/btn_dpi_down"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/dpi_smaller" />
+
+            <TextView
+                android:id="@+id/dpi_value"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_dpi_up"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/dpi_bigger" />
+        </LinearLayout>
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -87,5 +132,14 @@
             android:text="@string/hint_headunit_server"
             android:textColor="#AAAAAA"
             android:textSize="12sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="2dp"
+            android:text="@string/hint_overlay_toggle"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp" />
     </LinearLayout>
+    </ScrollView>
 </FrameLayout>

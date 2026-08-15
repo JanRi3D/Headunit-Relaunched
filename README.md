@@ -146,11 +146,76 @@ After connect, the steady state allocates nothing per frame:
 Everything lives in [`Config.java`](app/src/main/java/me/ri3d/headunit/relaunched/Config.java).
 The knobs that matter, in order:
 
-- `VIDEO_RESOLUTION` / `VIDEO_WIDTH` / `VIDEO_HEIGHT` — 800x480 is `RES_480P`
+- `VIDEO_RESOLUTION` — starting resolution; `RES_AUTO` by default, see below
 - `VIDEO_FPS` — `FPS_30`; 60 roughly doubles decode cost
-- `VIDEO_DPI` — how large AA draws its UI
+- `VIDEO_DPI` — starting UI scale, see below
 - `Logger.LEVEL` — set to `Log.WARN` on a slow unit; logcat writes are
   synchronous and per-frame logging visibly costs you frames
+
+## Resolution
+
+The **Resolution** button on the overlay cycles Auto → 480p → 720p → 1080p and
+remembers the choice. Auto measures the panel at startup and picks from it:
+
+| panel | resolution |
+|-------|-----------|
+| ≤ 800x480 | 480p |
+| up to 1280x720 | 720p |
+| larger | 1080p |
+
+**The choice is capped to the panel either way, including a manual one.** Asking
+for more pixels than the screen can show makes the display pipeline downscale
+every frame; open-headunit tracked video stalls on MediaTek's MDP to exactly
+that, so the cap is not optional. When it bites, the button says so —
+`Resolution: 1080p - capped to 1280 x 720 (panel 1196 x 720)`.
+
+Panel measurement uses `getRealSize()` on API 17+, falling back to `getSize()`,
+which subtracts the navigation bar and so slightly under-reports. On a broken
+ROM it falls back to 800x480.
+
+## UI scale
+
+If AA looks cramped, make it bigger with the **Smaller** / **Bigger** buttons.
+
+The setting is stored as the **layout width in dp**, not as a density, because
+dp means the same thing at every resolution — 914dp looks identical whether the
+stream is 800 or 1920 pixels wide. The density sent to the phone is derived from
+it (`dpi = width_px * 160 / width_dp`), so changing resolution keeps the scale
+you picked instead of silently reinterpreting it.
+
+| layout | at 800x480 | |
+|--------|-----------|-|
+| 1066 dp | 120 dpi | most content, smallest |
+| 914 dp  | 140 dpi | default |
+| 800 dp  | 160 dpi | |
+| 640 dp  | 200 dpi | least content, largest |
+
+`MIN_WIDTH_DP`/`MAX_WIDTH_DP` bound the range at 480–1280dp; below ~480dp AA
+runs out of room to lay out in and starts refusing or mislaying things.
+
+Both settings travel only in the service discovery response, and there is no
+protocol message to revise either — so changing one while connected tears the
+session down and rebuilds it. That takes a second or two and the phone treats it
+as an ordinary replug.
+
+Once video covers the screen the overlay is gone, so **hold BACK** to toggle it
+back (a short BACK still goes to AA as its own back button). If your unit has no
+BACK key, set these before connecting; they persist.
+
+## Leaving Android Auto
+
+AA's exit button comes over the wire two different ways depending on version, so
+both are handled:
+
+- **`ShutdownRequest`** (control channel, reason 1 = QUIT) — a real quit. We
+  answer `ShutdownResponse`, end the session with reason
+  `closed by Android Auto`, and the service deliberately **does not** reconnect.
+  Auto-retry is right for a yanked cable and wrong here; without the distinct
+  reason it put AA straight back on screen three seconds later.
+- **`VideoFocusRequest{NATIVE}`** (video channel) — hands the screen back
+  without quitting. The session stays up, the phone stops drawing, and the
+  overlay comes back. The phone will not resume on its own, so hold BACK to
+  send `VideoFocusIndication{PROJECTED}` and get the picture again.
 
 ## Status
 

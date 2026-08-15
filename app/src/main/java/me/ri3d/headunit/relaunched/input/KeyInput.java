@@ -32,6 +32,24 @@ public final class KeyInput {
         return true;
     }
 
+    /**
+     * Press and release in one call, for keys the activity has to hold back
+     * until it knows whether they were a long press (BACK).
+     *
+     * @return true if the key is mapped and a session was there to take it.
+     */
+    public boolean tap(int keyCode) {
+        InputChannel input = this.input;
+        if (input == null) return false;
+
+        int aa = map(keyCode);
+        if (aa < 0) return false;
+
+        input.sendButton(aa, true);
+        input.sendButton(aa, false);
+        return true;
+    }
+
     private static int map(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_HOME:              return BTN_HOME;

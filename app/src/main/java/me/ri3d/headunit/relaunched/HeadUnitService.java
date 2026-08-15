@@ -21,6 +21,8 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.view.Surface;
 
+import java.io.IOException;
+
 import me.ri3d.headunit.relaunched.protocol.AndroidAutoSession;
 import me.ri3d.headunit.relaunched.protocol.Ssl;
 import me.ri3d.headunit.relaunched.transport.Transport;
@@ -52,6 +54,8 @@ public final class HeadUnitService extends Service {
     public interface Listener {
         void onState(String state);
         void onEnded(String reason);
+        /** False when the phone hands the screen back to our own UI. */
+        void onVideoFocus(boolean projected);
     }
 
     public final class LocalBinder extends Binder {
@@ -107,6 +111,8 @@ public final class HeadUnitService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        // Before anything can build a service discovery response.
+        Settings.load(this);
         IntentFilter f = new IntentFilter();
         f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
@@ -149,6 +155,21 @@ public final class HeadUnitService extends Service {
     }
 
     /**
+     * Take the screen back after the phone handed it to our UI. Nothing else
+     * restarts the stream: once video focus is NATIVE the phone waits to be
+     * told it can draw again.
+     */
+    public void resumeProjection() {
+        AndroidAutoSession s = session;
+        if (s == null) return;
+        try {
+            s.channels().video.claimFocus();
+        } catch (IOException e) {
+            Logger.w("resume projection: " + e);
+        }
+    }
+
+    /**
      * @param bt   paired phone for the MODE_WIFI Bluetooth handshake, else null
      * @param host phone IP for MODE_WIFI_DIAL, else null
      */
@@ -186,6 +207,19 @@ public final class HeadUnitService extends Service {
         s.start();
     }
 
+    /**
+     * Tear the session down and build it again with the same parameters.
+     *
+     * Needed after a settings change that only travels in the service discovery
+     * response -- density, for one. There is no protocol message to revise it
+     * mid-session, so the whole session has to go. Reconnecting costs a couple
+     * of seconds; the phone treats it as an ordinary replug.
+     */
+    public void reconnect() {
+        if (!wantConnected) return;
+        connect(mode, btDevice, host);
+    }
+
     public void disconnect() {
         generation++;  // cancel any pending retry from the session we are killing
         wantConnected = false;
@@ -217,11 +251,26 @@ public final class HeadUnitService extends Service {
                 });
             }
 
+            @Override public void onVideoFocus(final boolean projected) {
+                main.post(new Runnable() {
+                    @Override public void run() {
+                        if (gen != generation) return;
+                        if (listener != null) listener.onVideoFocus(projected);
+                    }
+                });
+            }
+
             @Override public void onSessionEnded(final String reason) {
                 main.post(new Runnable() {
                     @Override public void run() {
                         if (gen != generation) return; // superseded; not our business
                         session = null;
+                        // The user tapped Exit in Android Auto. Retrying is what
+                        // we do for a dropped cable, and it is exactly wrong
+                        // here: it puts AA straight back on the screen.
+                        if (AndroidAutoSession.REASON_SHUTDOWN.equals(reason)) {
+                            wantConnected = false;
+                        }
                         notifyEnded(reason);
                         if (!wantConnected) {
                             releaseLocks();

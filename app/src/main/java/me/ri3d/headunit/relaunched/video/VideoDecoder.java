@@ -7,6 +7,7 @@ import android.view.Surface;
 import java.nio.ByteBuffer;
 
 import me.ri3d.headunit.relaunched.Config;
+import me.ri3d.headunit.relaunched.Settings;
 import me.ri3d.headunit.relaunched.util.Logger;
 
 /**
@@ -55,7 +56,8 @@ public final class VideoDecoder {
                 // Auto's keyframes at 800x480 run 66-80KB. Every one of those
                 // would be dropped, and a dropped keyframe means corruption or a
                 // freeze until the next one -- which reads as "video is slow".
-                fmt.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, Config.VIDEO_MAX_AU_BYTES);
+                // Scales with resolution: a 1080p keyframe is far bigger again.
+                fmt.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, Settings.maxAccessUnitBytes());
                 // Feeding csd-0 up front lets the decoder allocate before the
                 // first frame instead of stalling on it.
                 if (csd != null) {

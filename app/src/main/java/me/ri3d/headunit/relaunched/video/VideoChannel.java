@@ -4,7 +4,7 @@ import android.view.Surface;
 
 import java.io.IOException;
 
-import me.ri3d.headunit.relaunched.Config;
+import me.ri3d.headunit.relaunched.Settings;
 import me.ri3d.headunit.relaunched.protocol.Messages;
 import me.ri3d.headunit.relaunched.protocol.MessageWriter;
 import me.ri3d.headunit.relaunched.protocol.Proto;
@@ -23,6 +23,11 @@ import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
  */
 public final class VideoChannel {
 
+    /** Told when the phone takes the screen or hands it back. */
+    public interface FocusListener {
+        void onVideoFocus(boolean projected);
+    }
+
     private final MessageWriter writer;
     private final VideoDecoder decoder = new VideoDecoder();
     private final Proto.R reader = new Proto.R();
@@ -30,10 +35,13 @@ public final class VideoChannel {
     private Surface surface;
     private int session = -1;
     private boolean started;
+    private FocusListener focusListener;
 
     public VideoChannel(MessageWriter writer) {
         this.writer = writer;
     }
+
+    public void setFocusListener(FocusListener l) { focusListener = l; }
 
     /**
      * Called from the UI thread when the SurfaceView appears or disappears.
@@ -45,7 +53,7 @@ public final class VideoChannel {
         if (s == null) {
             decoder.stop();
         } else if (started) {
-            decoder.start(s, Config.VIDEO_WIDTH, Config.VIDEO_HEIGHT);
+            decoder.start(s, Settings.videoWidth(), Settings.videoHeight());
         }
     }
 
@@ -80,7 +88,7 @@ public final class VideoChannel {
                 Logger.i("video: start, session " + session);
                 started = true;
                 if (surface != null) {
-                    decoder.start(surface, Config.VIDEO_WIDTH, Config.VIDEO_HEIGHT);
+                    decoder.start(surface, Settings.videoWidth(), Settings.videoHeight());
                 }
                 break;
             }
@@ -92,8 +100,15 @@ public final class VideoChannel {
             }
             case AV_VIDEO_FOCUS_REQUEST: {
                 int mode = (int) Messages.varintField(reader, buf, off, len, 2, VIDEO_FOCUS_PROJECTED);
-                Logger.i("video: focus request mode=" + mode);
+                Logger.i("video: focus request mode=" + mode
+                        + (mode == VIDEO_FOCUS_NATIVE ? " (NATIVE -- screen handed back)" : ""));
                 sendFocus(mode, false);
+                // NATIVE is how Android Auto's exit-to-car button leaves the
+                // session up but stops drawing. Granting it and saying nothing
+                // else left the last decoded frame frozen on screen forever.
+                if (focusListener != null) {
+                    focusListener.onVideoFocus(mode != VIDEO_FOCUS_NATIVE);
+                }
                 break;
             }
             default:
