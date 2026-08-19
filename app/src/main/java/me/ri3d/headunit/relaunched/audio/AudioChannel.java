@@ -15,24 +15,36 @@ import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
  *
  * The AudioTrack is created on START_INDICATION and torn down on STOP, so a
  * head unit that only ever plays music never allocates the speech or system
- * tracks at all.
+ * tracks at all. The prompt streams are the exception -- see AV_STOP_INDICATION.
  */
 public final class AudioChannel {
 
     private final int channelId;
     private final String name;
+    private final boolean speech;
     private final MessageWriter writer;
     private final AudioOutput output;
     private final Proto.R reader = new Proto.R();
 
+    /** Sink to pull down while this channel is talking. Null on the media channel itself. */
+    private AudioOutput duckTarget;
+
     private int session = -1;
 
     public AudioChannel(int channelId, String name, int sampleRate, int channels,
-                        MessageWriter writer) {
+                        boolean speech, float gain, MessageWriter writer) {
         this.channelId = channelId;
         this.name = name;
+        this.speech = speech;
         this.writer = writer;
-        this.output = new AudioOutput(name, sampleRate, channels);
+        this.output = new AudioOutput(name, sampleRate, channels, speech, gain);
+    }
+
+    public AudioOutput output() { return output; }
+
+    /** Duck {@code media} for as long as this channel keeps feeding PCM. */
+    public void duckWhilePlaying(AudioOutput media) {
+        this.duckTarget = media;
     }
 
     public void onMessage(int msgId, byte[] buf, int off, int len) throws IOException {
@@ -42,11 +54,13 @@ public final class AudioChannel {
                 // Timestamp is for A/V sync we do not attempt: AudioTrack paces
                 // itself off the sample clock, which is what actually matters.
                 output.offer(buf, off + 8, len - 8);
+                if (duckTarget != null) duckTarget.duck();
                 ack();
                 break;
 
             case AV_MEDIA_INDICATION:
                 output.offer(buf, off, len);
+                if (duckTarget != null) duckTarget.duck();
                 ack();
                 break;
 
@@ -66,7 +80,14 @@ public final class AudioChannel {
 
             case AV_STOP_INDICATION:
                 Logger.i("audio[" + name + "]: stop");
-                output.stop();
+                // Prompt streams stop and start again for every single sentence.
+                // Tearing the track down each time throws away whatever of the
+                // sentence is still buffered (stop() flushes) and makes the next
+                // one start cold, so the tail and the first syllable both go
+                // missing. Keep them until the session ends -- an idle
+                // AudioTrack costs a buffer and nothing else. open-headunit
+                // does the same thing whenever it holds static audio focus.
+                if (!speech) output.stop();
                 break;
 
             default:

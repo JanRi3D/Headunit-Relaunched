@@ -199,7 +199,7 @@ public final class Messages {
     /** AVChannelSetupResponse { media_status, max_unacked, configs }. */
     public static void avSetupResponse(Proto.W w) {
         w.u32(1, SETUP_STATUS_OK);
-        w.u32(2, 1);  // max_unacked -- we ack every frame
+        w.u32(2, Config.AV_MAX_UNACKED);
         w.u32(3, 0);  // configs: index 0, the only one we advertised
     }
 
@@ -215,10 +215,17 @@ public final class Messages {
         w.bool(2, unrequested);
     }
 
-    /** AVInputOpenResponse { session, value } -- reply to a microphone request. */
-    public static void micResponse(Proto.W w, int session, boolean open) {
-        w.i32(1, session);
-        w.u32(2, open ? 0 : 1);
+    /**
+     * MicrophoneResponse { status, session_id } -- reply to a microphone request.
+     *
+     * Note the order: status first, session second. It is the other way round
+     * from every other A/V message on the wire, all of which lead with the
+     * session, and getting it backwards costs you the microphone -- the phone
+     * reads the session id as a status code and gives up on any value but zero.
+     */
+    public static void micResponse(Proto.W w, int status, int session) {
+        w.i32(1, status);
+        w.u32(2, session);
     }
 
     // =====================================================================

@@ -27,6 +27,52 @@ import static org.junit.Assert.assertTrue;
 public class ProtocolTest {
 
     // =====================================================================
+    // audio focus
+    // =====================================================================
+
+    /**
+     * Answering a transient request with a permanent grant is what makes
+     * "OK Google" close itself and guidance stop mid-sentence, so the mapping
+     * is worth a test even though it is four lines of switch.
+     */
+    @Test
+    public void audioFocusAnswersWithTheStateThatWasAskedFor() {
+        assertEquals(AUDIO_FOCUS_STATE_GAIN,
+                audioFocusState(AUDIO_FOCUS_REQ_GAIN));
+        assertEquals(AUDIO_FOCUS_STATE_GAIN_TRANSIENT,
+                audioFocusState(AUDIO_FOCUS_REQ_GAIN_TRANSIENT));
+        assertEquals(AUDIO_FOCUS_STATE_GAIN_TRANSIENT_GUIDANCE_ONLY,
+                audioFocusState(AUDIO_FOCUS_REQ_GAIN_TRANSIENT_MAY_DUCK));
+        assertEquals(AUDIO_FOCUS_STATE_LOSS,
+                audioFocusState(AUDIO_FOCUS_REQ_RELEASE));
+        // Anything the phone invents later still gets granted rather than dropped.
+        assertEquals(AUDIO_FOCUS_STATE_GAIN, audioFocusState(99));
+    }
+
+    /**
+     * MicrophoneResponse is the one A/V message that leads with a status
+     * instead of a session. Written the other way round, the phone reads the
+     * session id as a status code, treats anything but 0 as a failure, and
+     * closes the voice session a moment after opening it.
+     */
+    @Test
+    public void microphoneResponseLeadsWithStatus() {
+        Proto.W w = new Proto.W(32);
+        Messages.micResponse(w, STATUS_OK, 7);
+
+        Proto.R r = new Proto.R().set(w.buf, 0, w.pos);
+        int seen = 0;
+        while (r.next()) {
+            switch (r.field) {
+                case 1: assertEquals(STATUS_OK, r.int32()); seen++; break;
+                case 2: assertEquals(7, (int) r.varint()); seen++; break;
+                default: r.skip();
+            }
+        }
+        assertEquals(2, seen);
+    }
+
+    // =====================================================================
     // protobuf codec
     // =====================================================================
 

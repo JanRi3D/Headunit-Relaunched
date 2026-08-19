@@ -145,16 +145,50 @@ public final class ProtocolConstants {
     public static final int DRIVER_POSITION_LEFT  = 0;
     public static final int DRIVER_POSITION_RIGHT = 1;
 
+    /** MessageStatus, the shared status enum. Negative values are all failures. */
+    public static final int STATUS_INTERNAL_ERROR = -7;
+
     /** AVChannelSetupStatus */
     public static final int SETUP_STATUS_OK = 2;
 
     public static final int VIDEO_FOCUS_PROJECTED = 1;
     public static final int VIDEO_FOCUS_NATIVE    = 2;
 
-    public static final int AUDIO_FOCUS_STATE_GAIN = 1;
-    public static final int AUDIO_FOCUS_STATE_LOSS = 3;
+    /** AudioFocusStateType -- what we answer an audio focus request with. */
+    public static final int AUDIO_FOCUS_STATE_GAIN           = 1;
+    public static final int AUDIO_FOCUS_STATE_GAIN_TRANSIENT = 2;
+    public static final int AUDIO_FOCUS_STATE_LOSS           = 3;
+    public static final int AUDIO_FOCUS_STATE_GAIN_TRANSIENT_GUIDANCE_ONLY = 7;
 
-    public static final int AUDIO_FOCUS_REQ_RELEASE = 4;
+    /** AudioFocusType -- what the phone asks for. */
+    public static final int AUDIO_FOCUS_REQ_GAIN                    = 1;
+    public static final int AUDIO_FOCUS_REQ_GAIN_TRANSIENT          = 2;
+    public static final int AUDIO_FOCUS_REQ_GAIN_TRANSIENT_MAY_DUCK = 3;
+    public static final int AUDIO_FOCUS_REQ_RELEASE                 = 4;
+
+    /**
+     * The state to answer an AudioFocusRequestNotification with.
+     *
+     * It has to be the state matching what was asked for, not merely "yes".
+     * Assistant asks for GAIN_TRANSIENT and Google Maps guidance asks for
+     * GAIN_TRANSIENT_MAY_DUCK; answering either with a permanent STATE_GAIN
+     * reads on the phone as its transient request having been superseded, and
+     * it winds the session down again -- "OK Google" opens and closes, an
+     * announcement stops mid-sentence. Granting is not the point; granting the
+     * same thing that was requested is.
+     */
+    public static int audioFocusState(int requestType) {
+        switch (requestType) {
+            case AUDIO_FOCUS_REQ_GAIN_TRANSIENT:
+                return AUDIO_FOCUS_STATE_GAIN_TRANSIENT;
+            case AUDIO_FOCUS_REQ_GAIN_TRANSIENT_MAY_DUCK:
+                return AUDIO_FOCUS_STATE_GAIN_TRANSIENT_GUIDANCE_ONLY;
+            case AUDIO_FOCUS_REQ_RELEASE:
+                return AUDIO_FOCUS_STATE_LOSS;
+            default:
+                return AUDIO_FOCUS_STATE_GAIN;
+        }
+    }
 
     /** SensorType */
     public static final int SENSOR_NIGHT_DATA     = 10;

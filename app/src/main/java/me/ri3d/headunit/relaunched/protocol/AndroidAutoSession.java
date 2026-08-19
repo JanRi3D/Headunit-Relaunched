@@ -226,9 +226,9 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
             case MSG_AUDIO_FOCUS_REQUEST: {
                 int type = (int) Messages.varintField(reader, buf, off, len, 1, 0);
                 // We have no other audio sources competing, so the phone always
-                // gets what it asks for.
-                int grantedState = (type == AUDIO_FOCUS_REQ_RELEASE)
-                        ? AUDIO_FOCUS_STATE_LOSS : AUDIO_FOCUS_STATE_GAIN;
+                // gets what it asks for -- but it has to be told it got the
+                // thing it asked for. See audioFocusState().
+                int grantedState = audioFocusState(type);
                 Proto.W w = writer.begin();
                 Messages.audioFocusResponse(w, grantedState);
                 writer.end(CH_CONTROL, MSG_AUDIO_FOCUS_RESPONSE);

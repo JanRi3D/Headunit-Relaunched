@@ -89,9 +89,37 @@ public final class Config {
     public static final int SYSTEM_SAMPLE_RATE = 16000;
     public static final int SYSTEM_CHANNELS    = 1;
 
+    /**
+     * How many media messages the phone may have in flight before it has to
+     * wait for our ack. This was 1, which sounds tidy and is not: it caps the
+     * whole stream at one message per round trip, so on any link with real
+     * latency the phone cannot hand over a guidance prompt as fast as it is
+     * speaking it, and the announcement ends where the audio ran out rather
+     * than where the sentence did.
+     *
+     * Counted in messages, not frames -- a video keyframe is a dozen of them.
+     * open-headunit runs 16 over USB and 30 wireless for audio, 12-16 video.
+     */
+    public static final int AV_MAX_UNACKED = 16;
+
     /** Microphone the phone records from for voice commands. */
     public static final int MIC_SAMPLE_RATE = 16000;
     public static final boolean ENABLE_MIC  = true;
+
+    /**
+     * MediaRecorder.AudioSource for the microphone. VOICE_RECOGNITION is the
+     * source the platform tunes for speech recognisers, and unlike
+     * VOICE_COMMUNICATION it does not band-limit for telephony.
+     *
+     * It also does not echo-cancel. If the head unit's speakers sit close
+     * enough to the mic that Assistant hears its own prompt and stops
+     * listening the moment it starts, switch to VOICE_COMMUNICATION (7), which
+     * on most hardware brings the platform AEC with it.
+     */
+    public static final int MIC_SOURCE = 6; // MediaRecorder.AudioSource.VOICE_RECOGNITION
+
+    /** Attach echo cancellation / noise suppression / AGC where the device has them. */
+    public static final boolean MIC_EFFECTS = true;
 
     /**
      * Slots in each audio ring. 8 x ~4KB is ~32KB per active stream and gives
@@ -102,11 +130,33 @@ public final class Config {
     public static final int AUDIO_SLOT_BYTES = 8192;
 
     /**
-     * AudioTrack buffer, in slot-sized units. 4 slots is ~170ms at 48kHz stereo.
-     * Raise it if the log shows "obtainBuffer timed out"; lower it if audio lags
-     * behind video noticeably.
+     * AudioTrack buffer, in milliseconds of audio. Raise it if the log shows
+     * "obtainBuffer timed out"; lower it if audio lags behind video noticeably.
      */
-    public static final int AUDIO_BUFFER_SLOTS = 4;
+    public static final int AUDIO_BUFFER_MS = 170;
+
+    /**
+     * Per-stream trim. Above 1.0 the PCM is amplified in software (clipped at
+     * full scale), because AudioTrack volume only ever attenuates.
+     *
+     * Google's guidance PCM comes off the phone quieter than media does, and
+     * how much quieter it ends up depends on the amplifier after us -- so this
+     * is a knob, not a constant anyone can pick correctly in advance. Raise
+     * SPEECH_GAIN a step at a time until navigation matches music; past ~1.6
+     * loud prompts start to clip.
+     */
+    public static final float MEDIA_GAIN  = 1.0f;
+    public static final float SPEECH_GAIN = 1.3f;
+    public static final float SYSTEM_GAIN = 1.3f;
+
+    /**
+     * How far the media stream drops while a prompt plays, and how long after
+     * the last prompt packet it comes back up. The phone will not duck for us:
+     * we grant it audio focus unconditionally, which tells it the head unit is
+     * mixing.
+     */
+    public static final float DUCK_FACTOR = 0.35f;
+    public static final int DUCK_RELEASE_MS = 1200;
 
     // ---- transport ---------------------------------------------------------
     /**

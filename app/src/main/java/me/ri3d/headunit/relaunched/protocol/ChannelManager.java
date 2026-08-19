@@ -32,11 +32,18 @@ public final class ChannelManager {
     public ChannelManager(MessageWriter writer) {
         video       = new VideoChannel(writer);
         mediaAudio  = new AudioChannel(CH_MEDIA_AUDIO,  "media",
-                Config.MEDIA_SAMPLE_RATE,  Config.MEDIA_CHANNELS,  writer);
+                Config.MEDIA_SAMPLE_RATE,  Config.MEDIA_CHANNELS,
+                false, Config.MEDIA_GAIN,  writer);
         speechAudio = new AudioChannel(CH_SPEECH_AUDIO, "speech",
-                Config.SPEECH_SAMPLE_RATE, Config.SPEECH_CHANNELS, writer);
+                Config.SPEECH_SAMPLE_RATE, Config.SPEECH_CHANNELS,
+                true,  Config.SPEECH_GAIN, writer);
         systemAudio = new AudioChannel(CH_SYSTEM_AUDIO, "system",
-                Config.SYSTEM_SAMPLE_RATE, Config.SYSTEM_CHANNELS, writer);
+                Config.SYSTEM_SAMPLE_RATE, Config.SYSTEM_CHANNELS,
+                true,  Config.SYSTEM_GAIN, writer);
+        // Which of the two carries Google Maps depends on the AA build, so
+        // both duck. Neither ever plays while the other does.
+        speechAudio.duckWhilePlaying(mediaAudio.output());
+        systemAudio.duckWhilePlaying(mediaAudio.output());
         mic         = new MicChannel(writer);
         input       = new InputChannel(writer);
         sensor      = new SensorChannel(writer);
