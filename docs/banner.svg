@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" role="img" aria-label="Headunit Relaunched - an Android Auto receiver for cheap Android head units">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0A1120"/>
+      <stop offset="55%" stop-color="#0E1830"/>
+      <stop offset="100%" stop-color="#131F3A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4C8DFF" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#4C8DFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="route" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#4C8DFF"/>
+    </linearGradient>
+    <clipPath id="screen">
+      <rect x="14" y="14" width="312" height="172" rx="10"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1200" height="320" rx="18" fill="url(#bg)"/>
+  <circle cx="1010" cy="30" r="260" fill="url(#glow)"/>
+
+  <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="64" y="128" font-size="52" font-weight="700" fill="#EAF0FA" letter-spacing="-1">Headunit Relaunched</text>
+    <text x="64" y="170" font-size="19" fill="#8DA2C0">An Android Auto receiver for cheap Android head units</text>
+
+    <g font-size="13" font-weight="600" fill="#9FB6D6" text-anchor="middle">
+      <rect x="64"  y="206" width="94"  height="30" rx="15" fill="#16233C" stroke="#253554"/>
+      <text x="111" y="226">API 16+</text>
+      <rect x="168" y="206" width="112" height="30" rx="15" fill="#16233C" stroke="#253554"/>
+      <text x="224" y="226">2.5 MB APK</text>
+      <rect x="290" y="206" width="140" height="30" rx="15" fill="#16233C" stroke="#253554"/>
+      <text x="360" y="226">USB + Wireless</text>
+      <rect x="440" y="206" width="132" height="30" rx="15" fill="#16233C" stroke="#253554"/>
+      <text x="506" y="226">1 dependency</text>
+    </g>
+  </g>
+
+  <g transform="translate(796 60)">
+    <rect x="0" y="0" width="340" height="200" rx="16" fill="#131E33" stroke="#24334F" stroke-width="2"/>
+    <rect x="14" y="14" width="312" height="172" rx="10" fill="#0A1322"/>
+
+    <g clip-path="url(#screen)">
+      <g stroke="#1B2942" stroke-width="8" stroke-linecap="round">
+        <path d="M -10 130 H 350"/>
+        <path d="M 90 -10 V 210"/>
+        <path d="M 240 -10 V 210"/>
+        <path d="M -10 60 H 350"/>
+      </g>
+      <path d="M 46 176 V 130 H 90 V 60 H 240 V 30"
+            fill="none" stroke="url(#route)" stroke-width="9"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="46" cy="176" r="9" fill="#34D399"/>
+    </g>
+
+    <rect x="30" y="30" width="70" height="10" rx="5" fill="#2B3C5C"/>
+    <rect x="30" y="152" width="150" height="18" rx="9" fill="#16233C"/>
+    <rect x="196" y="152" width="100" height="18" rx="9" fill="#16233C"/>
+  </g>
+</svg>
