@@ -121,6 +121,20 @@ AA's exit button arrives two different ways depending on version, so both are ha
   quitting. Session stays up, phone stops drawing, overlay returns. The phone will not
   resume on its own: hold BACK to send `VideoFocusIndication{PROJECTED}`.
 
+Both routes obey the panel's **Android Auto exit** toggle: *back to this panel*
+(default) or *close the app*, which also stops the service — left running it would
+reconnect on the next USB attach with no activity and no surface to draw on. The
+choice persists.
+
+A drop nobody asked for — cable flake, phone reboot, Wi-Fi gone — instead brings up a
+**Reconnecting** screen (spinner, live state line) while the session is retried every
+3s, and the picture comes straight back when it lands. Unplugging USB shows it too:
+the attach broadcast reconnects on replug without anyone tapping anything. Tapping
+the screen uncovers the control panel and leaves the retry running; **Stop searching**
+ends it, for the unplug you did mean. A stop that *was*
+asked for — the Disconnect button, or AA's own quit — skips all of it and lands on
+the panel.
+
 ## How it works
 
 ```mermaid

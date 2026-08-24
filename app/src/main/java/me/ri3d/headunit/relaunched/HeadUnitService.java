@@ -53,7 +53,8 @@ public final class HeadUnitService extends Service {
     /** Callback for the activity. Always delivered on the main thread. */
     public interface Listener {
         void onState(String state);
-        void onEnded(String reason);
+        /** @param retrying true when the session comes back without the user acting. */
+        void onEnded(String reason, boolean retrying);
         /** False when the phone hands the screen back to our own UI. */
         void onVideoFocus(boolean projected);
     }
@@ -103,7 +104,9 @@ public final class HeadUnitService extends Service {
                 if (session == null) connect(MODE_USB, null, null);
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
                 Logger.i("service: USB detached");
-                if (mode == MODE_USB) disconnect();
+                // Retrying: the attach broadcast above reconnects on replug, so
+                // the UI should keep waiting rather than drop to its panel.
+                if (mode == MODE_USB) disconnect("USB unplugged", true);
             }
         }
     };
@@ -185,7 +188,9 @@ public final class HeadUnitService extends Service {
 
         Ssl ssl = Ssl.fromResources(this);
         if (ssl == null) {
-            notifyEnded("cannot load TLS identity from res/raw");
+            // Nothing to wait for: this fails identically every time.
+            wantConnected = false;
+            notifyEnded("cannot load TLS identity from res/raw", false);
             return;
         }
 
@@ -220,10 +225,18 @@ public final class HeadUnitService extends Service {
         connect(mode, btDevice, host);
     }
 
-    public void disconnect() {
+    /**
+     * @param retrying true when the session returns on its own -- a replug, for
+     *                 one. The UI keeps its reconnect screen up for those, and
+     *                 falls back to the control panel for a deliberate stop.
+     */
+    public void disconnect(String reason, boolean retrying) {
         generation++;  // cancel any pending retry from the session we are killing
         wantConnected = false;
         stopSession();
+        // The bump above just retired that session's own ended callback, so
+        // without this the screen would keep showing a session that is gone.
+        notifyEnded(reason, retrying);
         releaseLocks();
         stopForegroundCompat();
     }
@@ -271,7 +284,7 @@ public final class HeadUnitService extends Service {
                         if (AndroidAutoSession.REASON_SHUTDOWN.equals(reason)) {
                             wantConnected = false;
                         }
-                        notifyEnded(reason);
+                        notifyEnded(reason, wantConnected);
                         if (!wantConnected) {
                             releaseLocks();
                             stopForegroundCompat();
@@ -293,9 +306,9 @@ public final class HeadUnitService extends Service {
         };
     }
 
-    private void notifyEnded(String reason) {
-        updateNotification("Disconnected: " + reason);
-        if (listener != null) listener.onEnded(reason);
+    private void notifyEnded(String reason, boolean retrying) {
+        updateNotification((retrying ? "Reconnecting: " : "Disconnected: ") + reason);
+        if (listener != null) listener.onEnded(reason, retrying);
     }
 
     // =====================================================================

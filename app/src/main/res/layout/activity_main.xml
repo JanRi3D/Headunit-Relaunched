@@ -125,6 +125,12 @@
                 android:text="@string/dpi_bigger" />
         </LinearLayout>
 
+        <Button
+            android:id="@+id/btn_exit_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -142,4 +148,58 @@
             android:textSize="12sp" />
     </LinearLayout>
     </ScrollView>
+
+    <!--
+      Reconnect screen, on top of the panel because it replaces it while a
+      session is coming back. The indeterminate ProgressBar is the platform's
+      own animation, so there is no drawable or animator to ship.
+    -->
+    <LinearLayout
+        android:id="@+id/reconnect"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <ProgressBar
+            style="?android:attr/progressBarStyleLarge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:indeterminate="true" />
+
+        <TextView
+            android:id="@+id/reconnect_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
+            android:text="@string/reconnecting"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/reconnect_detail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="6dp"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp" />
+
+        <!-- An unplug you meant should not leave the unit hunting forever. -->
+        <Button
+            android:id="@+id/btn_cancel_reconnect"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/reconnect_cancel" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="10dp"
+            android:text="@string/reconnect_hint"
+            android:textColor="#666666"
+            android:textSize="12sp" />
+    </LinearLayout>
 </FrameLayout>

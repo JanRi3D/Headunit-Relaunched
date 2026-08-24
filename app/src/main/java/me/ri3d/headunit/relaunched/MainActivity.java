@@ -15,6 +15,9 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -40,12 +43,17 @@ public final class MainActivity extends Activity
         implements ServiceConnection, HeadUnitService.Listener, SurfaceHolder.Callback {
 
     private static final String PREF_PHONE_IP = "phone_ip";
+    private static final String PREF_EXIT_CLOSES = "aa_exit_closes_app";
 
     private SurfaceView surfaceView;
     private View overlay;
+    private View reconnectView;
+    private TextView reconnectTitle;
+    private TextView reconnectDetail;
     private TextView status;
     private TextView dpiValue;
     private Button resolutionButton;
+    private Button exitModeButton;
     private EditText editIp;
     private SharedPreferences prefs;
 
@@ -64,6 +72,12 @@ public final class MainActivity extends Activity
      * claim focus back, or the screen just stays black.
      */
     private boolean phoneReleasedScreen;
+    /** True while the service is bringing a session back by itself. */
+    private boolean reconnecting;
+    /** Set by a tap on the reconnect screen: uncover the panel, keep retrying. */
+    private boolean reconnectDismissed;
+    /** What Android Auto's own exit button does here: close, or show the panel. */
+    private boolean exitClosesApp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,6 +89,18 @@ public final class MainActivity extends Activity
         surfaceView = (SurfaceView) findViewById(R.id.surface);
         overlay = findViewById(R.id.overlay);
         status = (TextView) findViewById(R.id.status);
+
+        reconnectView = findViewById(R.id.reconnect);
+        reconnectTitle = (TextView) findViewById(R.id.reconnect_title);
+        reconnectDetail = (TextView) findViewById(R.id.reconnect_detail);
+        reconnectView.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // The retry runs on regardless; this only uncovers the panel so
+                // Disconnect stays reachable while it does.
+                reconnectDismissed = true;
+                updateOverlay();
+            }
+        });
 
         surfaceView.getHolder().addCallback(this);
         surfaceView.setOnTouchListener(touchInput);
@@ -93,6 +119,17 @@ public final class MainActivity extends Activity
         findViewById(R.id.btn_dpi_up).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { stepScale(1); }
         });
+
+        exitClosesApp = prefs.getBoolean(PREF_EXIT_CLOSES, false);
+        exitModeButton = (Button) findViewById(R.id.btn_exit_mode);
+        exitModeButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                exitClosesApp = !exitClosesApp;
+                prefs.edit().putBoolean(PREF_EXIT_CLOSES, exitClosesApp).commit();
+                showExitMode();
+            }
+        });
+        showExitMode();
 
         resolutionButton = (Button) findViewById(R.id.btn_resolution);
         resolutionButton.setOnClickListener(new View.OnClickListener() {
@@ -121,10 +158,10 @@ public final class MainActivity extends Activity
             }
         });
         findViewById(R.id.btn_stop).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (service != null) service.disconnect();
-                setChannels(false);
-            }
+            @Override public void onClick(View v) { stop(); }
+        });
+        findViewById(R.id.btn_cancel_reconnect).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { stop(); }
         });
 
         requestRuntimePermissions();
@@ -236,6 +273,26 @@ public final class MainActivity extends Activity
                 Settings.videoDpi(), Settings.widthDp(), Settings.heightDp()));
     }
 
+    private void showExitMode() {
+        exitModeButton.setText(exitClosesApp
+                ? R.string.exit_mode_close : R.string.exit_mode_panel);
+    }
+
+    /**
+     * Android Auto's exit button, honoured the way that toggle says. Closing
+     * means the whole app: leaving the service alive would have it reconnect on
+     * the next USB attach with no activity and no surface to draw on.
+     *
+     * @return true when the app is on its way out and the caller should stop.
+     */
+    private boolean closeOnAaExit() {
+        if (!exitClosesApp) return false;
+        stop();
+        stopService(new Intent(this, HeadUnitService.class));
+        finish();
+        return true;
+    }
+
     private void showResolution() {
         String mode = (Settings.resolutionMode() == Config.RES_AUTO)
                 ? getString(R.string.res_auto)
@@ -253,12 +310,53 @@ public final class MainActivity extends Activity
     private void connect(int mode, BluetoothDevice bt, String host) {
         if (service == null) { setStatus("service not ready"); return; }
         overlayPinned = false;
+        reconnecting = false;   // asked for by hand: show the panel, not a spinner
+        reconnectDismissed = false;
         service.connect(mode, bt, host);
         setChannels(true);
     }
 
+    /**
+     * End the session and whatever retry sits behind it. The same button twice:
+     * from the panel it stops a live session, from the reconnect screen it stops
+     * the search -- both are the user saying they meant this disconnect.
+     */
+    private void stop() {
+        if (service != null) service.disconnect("stopped", false);
+        reconnecting = false;   // also covers the service not being bound yet
+        updateOverlay();
+        setChannels(false);
+    }
+
     private void updateOverlay() {
-        overlay.setVisibility(projecting && !overlayPinned ? View.GONE : View.VISIBLE);
+        // The reconnect screen wins while it is up: two stacked overlays read as
+        // a glitch, and the panel is one tap underneath.
+        boolean busy = reconnecting && !projecting && !reconnectDismissed;
+        showReconnect(busy);
+        overlay.setVisibility(busy || (projecting && !overlayPinned)
+                ? View.GONE : View.VISIBLE);
+    }
+
+    /**
+     * Fade in, then let the indeterminate ProgressBar and a slow pulse on the
+     * label carry it -- a still "Reconnecting" on a car screen reads as a crash.
+     * Hiding is instant: what replaces it is the video coming back.
+     */
+    private void showReconnect(boolean show) {
+        if (show == (reconnectView.getVisibility() == View.VISIBLE)) return;
+        if (!show) {
+            reconnectTitle.clearAnimation();
+            reconnectView.setVisibility(View.GONE);
+            return;
+        }
+        reconnectView.setVisibility(View.VISIBLE);
+        reconnectView.startAnimation(
+                AnimationUtils.loadAnimation(this, android.R.anim.fade_in));
+        AlphaAnimation pulse = new AlphaAnimation(1f, 0.3f);
+        pulse.setDuration(900);
+        pulse.setRepeatMode(Animation.REVERSE);
+        pulse.setRepeatCount(Animation.INFINITE);
+        reconnectTitle.startAnimation(pulse);
     }
 
     /** Point the input listeners at the live session, or detach them. */
@@ -303,16 +401,29 @@ public final class MainActivity extends Activity
         // Latch, don't compare: "authenticated" is followed by "negotiating
         // channels", so testing the current state put the overlay straight back
         // over the video. Once the session is up it stays hidden until it drops.
-        if ("authenticated".equals(state)) projecting = true;
+        if ("authenticated".equals(state)) {
+            projecting = true;
+            reconnecting = false;
+            reconnectDismissed = false;  // arm the screen again for the next drop
+        }
+        // Same words the panel would show, so a retry visibly progresses instead
+        // of sitting on "phone disconnected" until the picture returns.
+        reconnectDetail.setText(state);
         updateOverlay();
     }
 
     @Override
-    public void onEnded(String reason) {
+    public void onEnded(String reason, boolean retrying) {
+        if (AndroidAutoSession.REASON_SHUTDOWN.equals(reason) && closeOnAaExit()) return;
         projecting = false;
         overlayPinned = false;
         phoneReleasedScreen = false;
-        setStatus("disconnected: " + reason);
+        setStatus((retrying ? "reconnecting: " : "disconnected: ") + reason);
+        // Only a drop nobody asked for gets the reconnect screen. A Disconnect
+        // tap or Android Auto's own exit button lands on the panel, which is
+        // where that user was heading anyway.
+        reconnecting = retrying;
+        reconnectDetail.setText(reason);
         updateOverlay();
         setChannels(false);
     }
@@ -324,6 +435,9 @@ public final class MainActivity extends Activity
      */
     @Override
     public void onVideoFocus(boolean projected) {
+        // The other half of AA's exit button: it hands the screen back rather
+        // than quitting, so the toggle has to be honoured here too.
+        if (!projected && closeOnAaExit()) return;
         phoneReleasedScreen = !projected;
         overlayPinned = !projected;
         if (!projected) setStatus(getString(R.string.status_screen_returned));
