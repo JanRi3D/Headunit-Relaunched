@@ -43,7 +43,8 @@ public final class VideoDecoder {
     private byte[] csd;
 
     private long lastPts;
-    private int rendered;
+    /** Written by the drain thread, read by feed() on the session thread. */
+    private volatile int rendered;
 
     public boolean isRunning() { return running; }
 
@@ -119,7 +120,9 @@ public final class VideoDecoder {
         if (c == null || bufs == null) return;
 
         try {
-            int idx = c.dequeueInputBuffer(Config.VIDEO_INPUT_TIMEOUT_US);
+            int idx = c.dequeueInputBuffer(rendered == 0
+                    ? Config.VIDEO_STARTUP_INPUT_TIMEOUT_US
+                    : Config.VIDEO_INPUT_TIMEOUT_US);
             if (idx < 0) {
                 Logger.d("video: input starved, dropping " + len + " bytes");
                 return;
@@ -200,7 +203,12 @@ public final class VideoDecoder {
                 } catch (IllegalStateException e) {
                     break; // stopped underneath us
                 } catch (Throwable e) {
-                    Logger.e("video: drain failed", e);
+                    // A codec reclaimed by the platform while we were in the
+                    // background lands here. Say so, or isRunning() keeps
+                    // claiming a decoder that has not drawn anything in minutes
+                    // and nothing ever rebuilds it.
+                    Logger.e("video: drain failed, decoder is done", e);
+                    running = false;
                     break;
                 }
             }

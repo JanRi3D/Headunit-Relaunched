@@ -70,6 +70,14 @@ public final class Config {
      * stalling the reader thread (which would also stall audio).
      */
     public static final int VIDEO_INPUT_TIMEOUT_US  = 20000;
+    /**
+     * The same budget, before the first frame of a stream has come out. What
+     * arrives then is the keyframe every later frame references, and a codec
+     * that has just started is exactly when input buffers are scarce -- dropping
+     * it there costs seconds of black waiting for Android Auto to send another.
+     * Worth blocking the reader thread once for.
+     */
+    public static final int VIDEO_STARTUP_INPUT_TIMEOUT_US = 250000;
     public static final int VIDEO_OUTPUT_TIMEOUT_US = 20000;
 
     /**

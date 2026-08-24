@@ -182,6 +182,16 @@ public final class MainActivity extends Activity
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Back from a reverse or turn-signal camera. The Surface may or may not
+        // have been destroyed on the way through -- when it was not, nothing
+        // else tells the phone we need a keyframe, and the panel stays black
+        // until Android Auto sends one on its own schedule.
+        if (service != null) service.refreshVideo();
+    }
+
+    @Override
     protected void onDestroy() {
         if (bound) {
             if (service != null) service.setListener(null);

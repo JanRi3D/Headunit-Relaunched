@@ -156,6 +156,41 @@ ends it, for the unplug you did mean. A stop that *was*
 asked for — the Disconnect button, or AA's own quit — skips all of it and lands on
 the panel.
 
+## Camera interruptions
+
+Reverse and turn-signal cameras take the screen from us and hand it back, which
+destroys and recreates the SurfaceView. Both halves need handling: on API < 23 there
+is no `setOutputSurface`, so the new Surface means a new codec, and a new codec has
+no reference frames. Android Auto sends a keyframe when it is *told* it has the
+screen, not on a timer, so a decoder restarted in the middle of a GOP is fed
+P-frames against nothing and the panel stays black for good.
+
+So the screen going away sends `VideoFocusIndication{NATIVE}` and getting it back
+sends `PROJECTED` -- both halves, because only a *transition* makes AA restart its
+encoder. Repeating PROJECTED at a phone that already thinks it is projecting changes
+nothing over there, which is the difference between the picture returning at once and
+returning whenever AA next felt like a keyframe.
+
+Coming back arrives by two routes, since a camera app may or may not destroy the
+Surface on its way past: the SurfaceView callback when it did, `onResume` when it did
+not. The codec is only rebuilt when it actually died -- a needless restart costs its
+own black flicker.
+
+The keyframe is then protected on arrival: until a stream has produced its first
+frame, `dequeueInputBuffer` waits 250ms instead of 20ms rather than dropping what it
+is handed. A freshly started codec is exactly when input buffers are scarce, and the
+access unit in flight then is the one every later frame references. In logcat the
+recovery reads:
+
+```
+video: decoder started 800x480
+video: claiming video focus (projected)
+video: first frame rendered
+```
+
+No third line means the phone is not sending; no first line means the Surface never
+came back.
+
 ## How it works
 
 ```mermaid

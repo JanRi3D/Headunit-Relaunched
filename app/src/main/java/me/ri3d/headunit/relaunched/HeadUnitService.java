@@ -173,6 +173,15 @@ public final class HeadUnitService extends Service {
     }
 
     /**
+     * The screen came back to us. Costs nothing when there is no session, or
+     * when the phone is not projecting.
+     */
+    public void refreshVideo() {
+        AndroidAutoSession s = session;
+        if (s != null) s.channels().video.refresh();
+    }
+
+    /**
      * @param bt   paired phone for the MODE_WIFI Bluetooth handshake, else null
      * @param host phone IP for MODE_WIFI_DIAL, else null
      */
