@@ -4,6 +4,12 @@
     <string name="connect_usb">USB</string>
     <string name="connect_wifi">Wi-Fi</string>
     <string name="connect_ip">Connect</string>
+    <string name="scan">Scan</string>
+    <string name="scanning">Scanning for a phone...</string>
+    <!-- e.g. "192.168.1.* - 24 of 254" -->
+    <string name="scan_progress">%1$s* - %2$d of %3$d</string>
+    <string name="scan_none">Nothing answered on port 5277. On the phone: Android Auto - About - tap the header 10x - Start head unit server. Details: adb logcat -s HU</string>
+    <string name="scan_offline">No Wi-Fi address - join the phone network first</string>
     <string name="disconnect">Disconnect</string>
     <string name="hint_phone_ip">Phone IP, e.g. 192.168.1.42</string>
     <string name="hint_headunit_server">On the phone: Android Auto - Developer settings - Start head unit server (port 5277)</string>

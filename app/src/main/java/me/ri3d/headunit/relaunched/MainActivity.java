@@ -29,6 +29,7 @@ import me.ri3d.headunit.relaunched.input.KeyInput;
 import me.ri3d.headunit.relaunched.input.TouchInput;
 import me.ri3d.headunit.relaunched.protocol.AndroidAutoSession;
 import me.ri3d.headunit.relaunched.util.Logger;
+import me.ri3d.headunit.relaunched.wifi.ServerScan;
 import me.ri3d.headunit.relaunched.wifi.WirelessDiscovery;
 
 /**
@@ -40,7 +41,8 @@ import me.ri3d.headunit.relaunched.wifi.WirelessDiscovery;
  * engine for a UI that is one SurfaceView and three buttons.
  */
 public final class MainActivity extends Activity
-        implements ServiceConnection, HeadUnitService.Listener, SurfaceHolder.Callback {
+        implements ServiceConnection, HeadUnitService.Listener, SurfaceHolder.Callback,
+                   ServerScan.Listener {
 
     private static final String PREF_PHONE_IP = "phone_ip";
     private static final String PREF_EXIT_CLOSES = "aa_exit_closes_app";
@@ -78,6 +80,11 @@ public final class MainActivity extends Activity
     private boolean reconnectDismissed;
     /** What Android Auto's own exit button does here: close, or show the panel. */
     private boolean exitClosesApp;
+
+    /** Running network sweep, or null. */
+    private ServerScan scan;
+    /** Prefix it is sweeping, for the progress line. */
+    private String scanPrefix;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -151,6 +158,9 @@ public final class MainActivity extends Activity
         findViewById(R.id.btn_ip).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { connectToTypedIp(); }
         });
+        findViewById(R.id.btn_scan).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { startScan(); }
+        });
         editIp.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override public boolean onEditorAction(TextView v, int actionId, KeyEvent e) {
                 connectToTypedIp();
@@ -209,6 +219,34 @@ public final class MainActivity extends Activity
         // have two phones paired to the same head unit.
         Iterator<BluetoothDevice> it = bonded.iterator();
         return it.next();
+    }
+
+    /**
+     * Sweep the local /24 for the phone, then dial whatever answered. Reuses the
+     * reconnect screen: same spinner, same Stop searching button, and here that
+     * button means exactly what it says.
+     */
+    private void startScan() {
+        if (scan != null) return;               // one sweep is enough
+        ServerScan s = new ServerScan(this);
+        // Whatever is in the box goes first: it is either the address that
+        // worked last time or the one the user is about to try by hand.
+        String typed = editIp.getText().toString().trim();
+        scanPrefix = s.start(this, typed.length() == 0 ? null : typed);
+        if (scanPrefix == null) {
+            setStatus(getString(R.string.scan_offline));
+            return;
+        }
+        scan = s;
+        reconnectDismissed = false;             // the user just asked for this
+        reconnectTitle.setText(R.string.scanning);
+        updateOverlay();
+    }
+
+    private void cancelScan() {
+        if (scan == null) return;
+        scan.cancel();
+        scan = null;
     }
 
     /** Dial the phone's head unit server at whatever is in the IP box. */
@@ -309,6 +347,9 @@ public final class MainActivity extends Activity
 
     private void connect(int mode, BluetoothDevice bt, String host) {
         if (service == null) { setStatus("service not ready"); return; }
+        // A sweep still running would connect over its own result a few seconds
+        // from now, on top of whatever this call is about to start.
+        cancelScan();
         overlayPinned = false;
         reconnecting = false;   // asked for by hand: show the panel, not a spinner
         reconnectDismissed = false;
@@ -322,6 +363,7 @@ public final class MainActivity extends Activity
      * the search -- both are the user saying they meant this disconnect.
      */
     private void stop() {
+        cancelScan();
         if (service != null) service.disconnect("stopped", false);
         reconnecting = false;   // also covers the service not being bound yet
         updateOverlay();
@@ -331,7 +373,7 @@ public final class MainActivity extends Activity
     private void updateOverlay() {
         // The reconnect screen wins while it is up: two stacked overlays read as
         // a glitch, and the panel is one tap underneath.
-        boolean busy = reconnecting && !projecting && !reconnectDismissed;
+        boolean busy = (reconnecting || scan != null) && !projecting && !reconnectDismissed;
         showReconnect(busy);
         overlay.setVisibility(busy || (projecting && !overlayPinned)
                 ? View.GONE : View.VISIBLE);
@@ -423,6 +465,7 @@ public final class MainActivity extends Activity
         // tap or Android Auto's own exit button lands on the panel, which is
         // where that user was heading anyway.
         reconnecting = retrying;
+        reconnectTitle.setText(R.string.reconnecting);
         reconnectDetail.setText(reason);
         updateOverlay();
         setChannels(false);
@@ -442,6 +485,26 @@ public final class MainActivity extends Activity
         overlayPinned = !projected;
         if (!projected) setStatus(getString(R.string.status_screen_returned));
         updateOverlay();
+    }
+
+    // ---- ServerScan.Listener ----------------------------------------------
+
+    @Override
+    public void onScanProgress(int done, int total) {
+        reconnectDetail.setText(getString(R.string.scan_progress, scanPrefix, done, total));
+    }
+
+    @Override
+    public void onScanDone(String ip) {
+        scan = null;    // finished on its own; nothing left to cancel
+        if (ip == null) {
+            setStatus(getString(R.string.scan_none));
+            updateOverlay();
+            return;
+        }
+        // Straight into the manual-IP path, which already saves the address.
+        editIp.setText(ip);
+        connectToTypedIp();
     }
 
     // ---- SurfaceHolder.Callback -------------------------------------------

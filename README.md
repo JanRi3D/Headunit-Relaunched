@@ -41,6 +41,27 @@ Same network is the only requirement: no Bluetooth, no hotspot credentials, no
 pairing. It is the listener the Desktop Head Unit talks to over an ADB forward. The
 IP is remembered and a dropped connection retries every 3s.
 
+**Scan** finds it for you instead: a TCP connect to `:5277` across the local /24, 24
+sockets in flight, first answer wins and connects. Whatever is in the IP box and the
+DHCP gateway go first -- the gateway *is* the phone when the phone is the hotspot, so
+the usual case answers before the sweep proper starts. Only silent addresses wait out
+the 900ms timeout; a host that is up refuses a closed port at once. Two dozen threads
+rather than 254 is the concession to 1GB hardware. No ICMP (needs root), no ARP table
+(gone from API 29), no broadcast the phone would not answer.
+
+It can only find a phone that is *already listening*, which means one with **Start head
+unit server** switched on. Production wireless AA has nothing to find: there the phone
+dials us, and only after the Bluetooth handshake. When a sweep comes back empty,
+`adb logcat -s HU` prints the address it swept from and the tally:
+
+```
+scan: nothing found -- 256/256 probed, 3 answered, 253 silent, first miss ...
+```
+
+`0 answered` means nothing on that subnet was reached at all -- wrong interface, wrong
+subnet, or AP client isolation. Anything above zero means the sweep is fine and the
+phone simply is not listening on 5277.
+
 **Wi-Fi, production wireless** — the Wi-Fi button. Roles reverse: we listen on 5288
 and the phone dials *us*, but only after the Bluetooth RFCOMM handshake tells it
 where to go. Needs `Config.WIFI_SSID` / `WIFI_PASSWORD` to match your hotspot, which
