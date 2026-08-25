@@ -1,7 +1,5 @@
 package me.ri3d.headunit.relaunched.audio;
 
-import java.io.IOException;
-
 import me.ri3d.headunit.relaunched.protocol.Messages;
 import me.ri3d.headunit.relaunched.protocol.MessageWriter;
 import me.ri3d.headunit.relaunched.protocol.Proto;
@@ -47,7 +45,7 @@ public final class AudioChannel {
         this.duckTarget = media;
     }
 
-    public void onMessage(int msgId, byte[] buf, int off, int len) throws IOException {
+    public void onMessage(int msgId, byte[] buf, int off, int len) {
         switch (msgId) {
             case AV_MEDIA_WITH_TIMESTAMP:
                 if (len < 8) return;
@@ -96,7 +94,7 @@ public final class AudioChannel {
         }
     }
 
-    private void ack() throws IOException {
+    private void ack() {
         Proto.W w = writer.begin();
         Messages.avMediaAck(w, session);
         writer.end(channelId, AV_MEDIA_ACK);

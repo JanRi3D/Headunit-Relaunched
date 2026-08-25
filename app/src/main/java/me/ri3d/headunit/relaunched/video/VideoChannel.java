@@ -2,8 +2,6 @@ package me.ri3d.headunit.relaunched.video;
 
 import android.view.Surface;
 
-import java.io.IOException;
-
 import me.ri3d.headunit.relaunched.Settings;
 import me.ri3d.headunit.relaunched.protocol.Messages;
 import me.ri3d.headunit.relaunched.protocol.MessageWriter;
@@ -74,12 +72,8 @@ public final class VideoChannel {
         // repeats the state Android Auto is already in changes nothing over
         // there -- no restart, no keyframe -- and we sat black through every one.
         if (handedBack || session < 0) return;
-        try {
-            Logger.i("video: screen taken by our own UI, releasing focus");
-            sendFocus(VIDEO_FOCUS_NATIVE, true);
-        } catch (IOException e) {
-            Logger.w("video: cannot release focus: " + e);
-        }
+        Logger.i("video: screen taken by our own UI, releasing focus");
+        sendFocus(VIDEO_FOCUS_NATIVE, true);
     }
 
     /**
@@ -110,14 +104,10 @@ public final class VideoChannel {
             Logger.i("video: decoder gone, restarting it");
             decoder.start(s, Settings.videoWidth(), Settings.videoHeight());
         }
-        try {
-            claimFocus();
-        } catch (IOException e) {
-            Logger.w("video: cannot ask for a keyframe: " + e);
-        }
+        claimFocus();
     }
 
-    public void onMessage(int msgId, byte[] buf, int off, int len) throws IOException {
+    public void onMessage(int msgId, byte[] buf, int off, int len) {
         switch (msgId) {
             case AV_MEDIA_WITH_TIMESTAMP: {
                 // u64 microsecond timestamp, then the access unit
@@ -180,7 +170,7 @@ public final class VideoChannel {
         }
     }
 
-    private void ack() throws IOException {
+    private void ack() {
         Proto.W w = writer.begin();
         Messages.avMediaAck(w, session);
         writer.end(CH_VIDEO, AV_MEDIA_ACK);
@@ -194,13 +184,13 @@ public final class VideoChannel {
      * the video channel is open is what actually triggers the setup/start
      * exchange; without it the phone opens every channel and then sits idle.
      */
-    public void claimFocus() throws IOException {
+    public void claimFocus() {
         Logger.i("video: claiming video focus (projected)");
         handedBack = false;
         sendFocus(VIDEO_FOCUS_PROJECTED, true);
     }
 
-    private void sendFocus(int mode, boolean unrequested) throws IOException {
+    private void sendFocus(int mode, boolean unrequested) {
         Proto.W w = writer.begin();
         Messages.videoFocusIndication(w, mode, unrequested);
         writer.end(CH_VIDEO, AV_VIDEO_FOCUS_IND);

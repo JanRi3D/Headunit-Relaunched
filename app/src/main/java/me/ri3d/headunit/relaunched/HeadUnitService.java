@@ -21,8 +21,6 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.view.Surface;
 
-import java.io.IOException;
-
 import me.ri3d.headunit.relaunched.protocol.AndroidAutoSession;
 import me.ri3d.headunit.relaunched.protocol.Ssl;
 import me.ri3d.headunit.relaunched.transport.Transport;
@@ -164,12 +162,7 @@ public final class HeadUnitService extends Service {
      */
     public void resumeProjection() {
         AndroidAutoSession s = session;
-        if (s == null) return;
-        try {
-            s.channels().video.claimFocus();
-        } catch (IOException e) {
-            Logger.w("resume projection: " + e);
-        }
+        if (s != null) s.channels().video.claimFocus();
     }
 
     /**
@@ -332,7 +325,11 @@ public final class HeadUnitService extends Service {
         }
         if (!wakeLock.isHeld()) wakeLock.acquire();
 
-        if (mode == MODE_WIFI) {
+        // Both wireless modes, not just the listening one: MODE_WIFI_DIAL is
+        // the manual-IP path the scan feeds into, and it rides the same radio.
+        // Without the lock, Wi-Fi power save parks the link mid-session, which
+        // is most of what "wireless is flaky" turns out to be.
+        if (mode != MODE_USB) {
             if (wifiLock == null) {
                 WifiManager wm = (WifiManager)
                         getApplicationContext().getSystemService(Context.WIFI_SERVICE);

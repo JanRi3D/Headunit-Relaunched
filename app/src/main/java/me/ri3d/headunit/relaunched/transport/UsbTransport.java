@@ -41,7 +41,6 @@ public final class UsbTransport implements Transport {
     /** Device from the ATTACHED broadcast, tried first. May be null. */
     private final UsbDevice preferred;
 
-    private UsbDevice device;
     private UsbDeviceConnection conn;
     private UsbInterface iface;
     private UsbEndpoint epIn, epOut;
@@ -50,15 +49,22 @@ public final class UsbTransport implements Transport {
 
     /**
      * API 16/17 have no bulkTransfer(ep, buf, offset, len, timeout), so those
-     * releases bounce through one scratch buffer rather than allocating per
-     * call. Null on API 18+, where the offset overload is used directly.
+     * releases bounce through a scratch buffer rather than allocating per call.
+     * Null on API 18+, where the offset overload is used directly.
+     *
+     * One per direction, and that is not tidiness. read() runs on the session
+     * thread and write() on the writer thread, at the same time; a single
+     * shared buffer has one memcpy through it while the other is mid-transfer,
+     * which puts outbound bytes into an inbound frame. That is a frame length
+     * "out of range" or a BAD_RECORD_MAC a moment later -- the same corruption
+     * a part-filled bulk read causes, on the exact API level this project
+     * exists for. Transport.write() promises to be safe alongside a read; this
+     * is what makes it true.
      */
-    private final byte[] scratch =
+    private final byte[] readScratch =
             (Build.VERSION.SDK_INT >= 18) ? null : new byte[64 * 1024];
-
-    public UsbTransport(Context ctx) {
-        this(ctx, null);
-    }
+    private final byte[] writeScratch =
+            (Build.VERSION.SDK_INT >= 18) ? null : new byte[64 * 1024];
 
     /** @param preferred device from the ATTACHED broadcast, or null to scan. */
     public UsbTransport(Context ctx, UsbDevice preferred) {
@@ -144,7 +150,6 @@ public final class UsbTransport implements Transport {
             throw new IOException("missing bulk endpoints");
         }
 
-        device = dev;
         closed = false;
         Logger.i("USB: connected, maxPacket in=" + epIn.getMaxPacketSize()
                 + " out=" + epOut.getMaxPacketSize());
@@ -199,6 +204,7 @@ public final class UsbTransport implements Transport {
         return granted[0];
     }
 
+    /** Runs on the session thread only. See readScratch. */
     @Override
     public int read(byte[] buf, int off, int len) throws IOException {
         UsbDeviceConnection c = conn;
@@ -208,19 +214,29 @@ public final class UsbTransport implements Transport {
         if (Build.VERSION.SDK_INT >= 18) {
             n = c.bulkTransfer(epIn, buf, off, len, Config.USB_READ_TIMEOUT_MS);
         } else {
-            int cap = Math.min(len, scratch.length);
-            n = c.bulkTransfer(epIn, scratch, cap, Config.USB_READ_TIMEOUT_MS);
-            if (n > 0) System.arraycopy(scratch, 0, buf, off, n);
+            int cap = Math.min(len, readScratch.length);
+            n = c.bulkTransfer(epIn, readScratch, cap, Config.USB_READ_TIMEOUT_MS);
+            if (n > 0) System.arraycopy(readScratch, 0, buf, off, n);
         }
 
         if (n < 0) {
-            // bulkTransfer cannot distinguish timeout from error. Treat it as a
-            // timeout while we are still open; the caller just tries again.
-            return closed ? -1 : 0;
+            // Not a timeout to shrug off: USB_READ_TIMEOUT_MS is 0, so the
+            // transfer waits indefinitely and -1 is a real error -- unplug,
+            // stall, or the URB killed by close() releasing the interface.
+            //
+            // Carrying on is worse than dropping the link. A bulk IN that ends
+            // early takes its bytes with it (the kernel copies a transfer back
+            // only once it has completed), and resuming mid-frame from there
+            // surfaces as a frame length "out of range" or, once the gap lands
+            // inside a TLS record, as BAD_DECRYPT / BAD_RECORD_MAC. The byte
+            // stream cannot resync. The session can, in three seconds.
+            if (!closed) Logger.w("USB: bulk read failed -- dropping the session");
+            return -1;
         }
         return n;
     }
 
+    /** Runs on the writer thread only, alongside a read. See writeScratch. */
     @Override
     public void write(byte[] buf, int off, int len) throws IOException {
         UsbDeviceConnection c = conn;
@@ -232,9 +248,9 @@ public final class UsbTransport implements Transport {
             if (Build.VERSION.SDK_INT >= 18) {
                 n = c.bulkTransfer(epOut, buf, off + sent, len - sent, Config.USB_WRITE_TIMEOUT_MS);
             } else {
-                int chunk = Math.min(len - sent, scratch.length);
-                System.arraycopy(buf, off + sent, scratch, 0, chunk);
-                n = c.bulkTransfer(epOut, scratch, chunk, Config.USB_WRITE_TIMEOUT_MS);
+                int chunk = Math.min(len - sent, writeScratch.length);
+                System.arraycopy(buf, off + sent, writeScratch, 0, chunk);
+                n = c.bulkTransfer(epOut, writeScratch, chunk, Config.USB_WRITE_TIMEOUT_MS);
             }
             if (n <= 0) throw new IOException("USB write failed (" + n + ")");
             sent += n;
@@ -250,6 +266,6 @@ public final class UsbTransport implements Transport {
             try { if (iface != null) c.releaseInterface(iface); } catch (Exception ignored) {}
             try { c.close(); } catch (Exception ignored) {}
         }
-        iface = null; epIn = null; epOut = null; device = null;
+        iface = null; epIn = null; epOut = null;
     }
 }

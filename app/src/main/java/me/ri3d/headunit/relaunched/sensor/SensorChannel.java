@@ -1,7 +1,5 @@
 package me.ri3d.headunit.relaunched.sensor;
 
-import java.io.IOException;
-
 import me.ri3d.headunit.relaunched.protocol.Messages;
 import me.ri3d.headunit.relaunched.protocol.MessageWriter;
 import me.ri3d.headunit.relaunched.protocol.Proto;
@@ -32,7 +30,7 @@ public final class SensorChannel {
         this.writer = writer;
     }
 
-    public void onMessage(int msgId, byte[] buf, int off, int len) throws IOException {
+    public void onMessage(int msgId, byte[] buf, int off, int len) {
         switch (msgId) {
             case SENSOR_START_REQUEST: {
                 int type = (int) Messages.varintField(reader, buf, off, len, 1, 0);
@@ -53,14 +51,14 @@ public final class SensorChannel {
     }
 
     /** 0 = unrestricted. Set non-zero only if you actually gate the UI while moving. */
-    public void sendDrivingStatus(int status) throws IOException {
+    public void sendDrivingStatus(int status) {
         Proto.W w = writer.begin();
         Messages.drivingStatus(w, status);
         writer.end(CH_SENSOR, SENSOR_EVENT);
     }
 
     /** Call from your light sensor or a day/night button to flip AA's theme. */
-    public void sendNightMode(boolean isNight) throws IOException {
+    public void sendNightMode(boolean isNight) {
         night = isNight;
         Proto.W w = writer.begin();
         Messages.nightMode(w, isNight);

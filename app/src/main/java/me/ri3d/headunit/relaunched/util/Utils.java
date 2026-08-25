@@ -6,8 +6,6 @@ public final class Utils {
 
     private Utils() {}
 
-    private static final char[] HEX = "0123456789abcdef".toCharArray();
-
     public static byte[] utf8(String s) {
         try {
             return s.getBytes("UTF-8");
@@ -54,17 +52,26 @@ public final class Utils {
         return v;
     }
 
-    /** Hex dump for protocol debugging. Only call under Logger.isDebug(). */
-    public static String hex(byte[] b, int off, int len) {
-        if (len > 64) len = 64;
-        char[] out = new char[len * 3];
-        for (int i = 0; i < len; i++) {
-            int v = b[off + i] & 0xFF;
-            out[i * 3] = HEX[v >>> 4];
-            out[i * 3 + 1] = HEX[v & 0xF];
-            out[i * 3 + 2] = ' ';
-        }
-        return new String(out);
+    /**
+     * Index a producer may fill next in a `slots`-long ring, or -1 when it is
+     * full and the incoming item has to be dropped.
+     *
+     * One slot is always left free, and the producer never reclaims one by
+     * advancing head -- together those are what let a consumer take slot
+     * `head`, release the lock and spend a long time in it (an AudioTrack write,
+     * a USB bulk transfer) without the producer overwriting the buffer
+     * underneath it. Dropping the *oldest* instead looks kinder and is not: it
+     * advances head, and after enough drops head wraps onto the slot the
+     * consumer is still reading from. Dropping the newest keeps head moving
+     * only under the consumer, and the collision becomes unreachable rather
+     * than unlikely.
+     *
+     * @param head  index the consumer will take next
+     * @param count items currently queued
+     */
+    public static int ringSlot(int head, int count, int slots) {
+        if (count >= slots - 1) return -1;
+        return (head + count) % slots;
     }
 
     public static void closeQuietly(java.io.Closeable c) {

@@ -49,13 +49,16 @@ public final class MainActivity extends Activity
 
     private SurfaceView surfaceView;
     private View overlay;
+    private View settingsView;
     private View reconnectView;
     private TextView reconnectTitle;
     private TextView reconnectDetail;
     private TextView status;
+    private TextView settingsStatus;
     private TextView dpiValue;
     private Button resolutionButton;
     private Button exitModeButton;
+    private Button stopButton;
     private EditText editIp;
     private SharedPreferences prefs;
 
@@ -64,20 +67,19 @@ public final class MainActivity extends Activity
 
     private HeadUnitService service;
     private boolean bound;
-    /** True from "authenticated" until the session ends; hides the overlay. */
-    private boolean projecting;
-    /** Long-press BACK forces the panel back over a live session. */
-    private boolean overlayPinned;
+
+    /** Everything that decides which of the three screens is up. */
+    private final ScreenState screen = new ScreenState();
+
     /**
      * True while the phone holds video focus NATIVE, i.e. it has stopped drawing
      * and is waiting to be told it may start again. Hiding the panel has to
      * claim focus back, or the screen just stays black.
+     *
+     * Not part of ScreenState: this is what the *phone* is doing, and it
+     * outlives whichever screen we happen to show.
      */
     private boolean phoneReleasedScreen;
-    /** True while the service is bringing a session back by itself. */
-    private boolean reconnecting;
-    /** Set by a tap on the reconnect screen: uncover the panel, keep retrying. */
-    private boolean reconnectDismissed;
     /** What Android Auto's own exit button does here: close, or show the panel. */
     private boolean exitClosesApp;
 
@@ -97,6 +99,23 @@ public final class MainActivity extends Activity
         overlay = findViewById(R.id.overlay);
         status = (TextView) findViewById(R.id.status);
 
+        settingsView = findViewById(R.id.settings);
+        settingsStatus = (TextView) findViewById(R.id.settings_status);
+        findViewById(R.id.btn_settings).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showSettings(true); }
+        });
+        findViewById(R.id.btn_settings_back).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showSettings(false); }
+        });
+        findViewById(R.id.btn_bt_pair).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // Straight out to the panel: what happens next is a status line,
+                // and there is nothing left to set in here.
+                showSettings(false);
+                connect(HeadUnitService.MODE_WIFI, firstPairedPhone(), null);
+            }
+        });
+
         reconnectView = findViewById(R.id.reconnect);
         reconnectTitle = (TextView) findViewById(R.id.reconnect_title);
         reconnectDetail = (TextView) findViewById(R.id.reconnect_detail);
@@ -104,8 +123,8 @@ public final class MainActivity extends Activity
             @Override public void onClick(View v) {
                 // The retry runs on regardless; this only uncovers the panel so
                 // Disconnect stays reachable while it does.
-                reconnectDismissed = true;
-                updateOverlay();
+                screen.busyDismissed = true;
+                render();
             }
         });
 
@@ -150,11 +169,6 @@ public final class MainActivity extends Activity
                 connect(HeadUnitService.MODE_USB, null, null);
             }
         });
-        findViewById(R.id.btn_wifi).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                connect(HeadUnitService.MODE_WIFI, firstPairedPhone(), null);
-            }
-        });
         findViewById(R.id.btn_ip).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { connectToTypedIp(); }
         });
@@ -167,7 +181,8 @@ public final class MainActivity extends Activity
                 return true;
             }
         });
-        findViewById(R.id.btn_stop).setOnClickListener(new View.OnClickListener() {
+        stopButton = (Button) findViewById(R.id.btn_stop);
+        stopButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { stop(); }
         });
         findViewById(R.id.btn_cancel_reconnect).setOnClickListener(new View.OnClickListener() {
@@ -175,6 +190,7 @@ public final class MainActivity extends Activity
         });
 
         requestRuntimePermissions();
+        render();   // initial state comes from the same place every later one does
 
         Intent i = new Intent(this, HeadUnitService.class);
         startService(i);            // keeps running if the activity is destroyed
@@ -222,7 +238,7 @@ public final class MainActivity extends Activity
     private BluetoothDevice firstPairedPhone() {
         Set<BluetoothDevice> bonded = WirelessDiscovery.bondedDevices();
         if (bonded == null || bonded.isEmpty()) {
-            setStatus("No paired Bluetooth phone -- pair one first, or start the phone side manually");
+            setStatus("No paired Bluetooth phone — pair one first, or start the phone side manually");
             return null;
         }
         // ponytail: first paired device wins. Add a picker when you actually
@@ -248,12 +264,14 @@ public final class MainActivity extends Activity
             return;
         }
         scan = s;
-        reconnectDismissed = false;             // the user just asked for this
+        screen.scanning = true;
+        screen.busyDismissed = false;           // the user just asked for this
         reconnectTitle.setText(R.string.scanning);
-        updateOverlay();
+        render();
     }
 
     private void cancelScan() {
+        screen.scanning = false;
         if (scan == null) return;
         scan.cancel();
         scan = null;
@@ -308,8 +326,8 @@ public final class MainActivity extends Activity
      */
     private void renegotiate(String what) {
         if (service == null || !service.isConnected()) return;
-        projecting = false;
-        updateOverlay();
+        screen.projecting = false;
+        render();
         // Stays pinned across the reconnect, so you can keep stepping until it
         // looks right instead of holding BACK after every try.
         setStatus("reconnecting at " + what);
@@ -347,12 +365,9 @@ public final class MainActivity extends Activity
                 : Settings.name(Settings.resolutionMode());
         // Say so when the panel cap overrode the request, rather than letting
         // the button look like it ignored the tap.
-        resolutionButton.setText(Settings.resolutionWasCapped()
-                ? getString(R.string.res_format_capped, mode,
-                        Settings.videoWidth(), Settings.videoHeight(),
-                        Settings.panelWidth(), Settings.panelHeight())
-                : getString(R.string.res_format, mode,
-                        Settings.videoWidth(), Settings.videoHeight()));
+        resolutionButton.setText(getString(
+                Settings.resolutionWasCapped() ? R.string.res_format_capped : R.string.res_format,
+                mode, Settings.videoWidth(), Settings.videoHeight()));
     }
 
     private void connect(int mode, BluetoothDevice bt, String host) {
@@ -360,11 +375,10 @@ public final class MainActivity extends Activity
         // A sweep still running would connect over its own result a few seconds
         // from now, on top of whatever this call is about to start.
         cancelScan();
-        overlayPinned = false;
-        reconnecting = false;   // asked for by hand: show the panel, not a spinner
-        reconnectDismissed = false;
+        screen.connectRequested();
         service.connect(mode, bt, host);
         setChannels(true);
+        render();
     }
 
     /**
@@ -375,18 +389,35 @@ public final class MainActivity extends Activity
     private void stop() {
         cancelScan();
         if (service != null) service.disconnect("stopped", false);
-        reconnecting = false;   // also covers the service not being bound yet
-        updateOverlay();
+        screen.stopRequested();   // also covers the service not being bound yet
+        render();
         setChannels(false);
     }
 
-    private void updateOverlay() {
-        // The reconnect screen wins while it is up: two stacked overlays read as
-        // a glitch, and the panel is one tap underneath.
-        boolean busy = (reconnecting || scan != null) && !projecting && !reconnectDismissed;
-        showReconnect(busy);
-        overlay.setVisibility(busy || (projecting && !overlayPinned)
-                ? View.GONE : View.VISIBLE);
+    /** The only code here that touches a View's visibility. */
+    private void render() {
+        ScreenState.Screen s = screen.current();
+        showReconnect(s == ScreenState.Screen.BUSY);
+        overlay.setVisibility(s == ScreenState.Screen.PANEL ? View.VISIBLE : View.GONE);
+        settingsView.setVisibility(s == ScreenState.Screen.SETTINGS ? View.VISIBLE : View.GONE);
+
+        // Gone rather than dimmed. It shares the header with the status line,
+        // which is the one thing on this screen worth reading, and a control
+        // that does nothing four fifths of the time should not be pushing that
+        // onto a second line to sit there greyed out.
+        stopButton.setVisibility(screen.canStop() ? View.VISIBLE : View.GONE);
+    }
+
+    private void showSettings(boolean open) {
+        screen.settingsOpen = open;
+        render();
+    }
+
+    /** @return true when a BACK press was spent closing settings. */
+    private boolean closeSettings() {
+        if (!screen.settingsOpen) return false;
+        showSettings(false);
+        return true;
     }
 
     /**
@@ -418,8 +449,14 @@ public final class MainActivity extends Activity
         keyInput.setChannel(attached && s != null ? s.channels().input : null);
     }
 
+    /**
+     * The panel and the settings header carry the same line. Changing the
+     * resolution rebuilds the session, and that has to be visible from the
+     * screen you changed it on.
+     */
     private void setStatus(String s) {
         status.setText(s);
+        settingsStatus.setText(s);
     }
 
     // ---- ServiceConnection -------------------------------------------------
@@ -433,7 +470,7 @@ public final class MainActivity extends Activity
         if (h.getSurface() != null && h.getSurface().isValid()) {
             service.setSurface(h.getSurface());
         }
-        setStatus(service.isConnected() ? "connected" : "idle -- plug in a phone or tap a button");
+        setStatus(service.isConnected() ? "Connected" : getString(R.string.status_idle));
         setChannels(service.isConnected());
     }
 
@@ -450,34 +487,22 @@ public final class MainActivity extends Activity
     public void onState(String state) {
         setStatus(state);
         setChannels(true);
-        // Latch, don't compare: "authenticated" is followed by "negotiating
-        // channels", so testing the current state put the overlay straight back
-        // over the video. Once the session is up it stays hidden until it drops.
-        if ("authenticated".equals(state)) {
-            projecting = true;
-            reconnecting = false;
-            reconnectDismissed = false;  // arm the screen again for the next drop
-        }
+        if ("authenticated".equals(state)) screen.projectionStarted();
         // Same words the panel would show, so a retry visibly progresses instead
         // of sitting on "phone disconnected" until the picture returns.
         reconnectDetail.setText(state);
-        updateOverlay();
+        render();
     }
 
     @Override
     public void onEnded(String reason, boolean retrying) {
         if (AndroidAutoSession.REASON_SHUTDOWN.equals(reason) && closeOnAaExit()) return;
-        projecting = false;
-        overlayPinned = false;
         phoneReleasedScreen = false;
+        screen.projectionEnded(retrying);
         setStatus((retrying ? "reconnecting: " : "disconnected: ") + reason);
-        // Only a drop nobody asked for gets the reconnect screen. A Disconnect
-        // tap or Android Auto's own exit button lands on the panel, which is
-        // where that user was heading anyway.
-        reconnecting = retrying;
         reconnectTitle.setText(R.string.reconnecting);
         reconnectDetail.setText(reason);
-        updateOverlay();
+        render();
         setChannels(false);
     }
 
@@ -492,9 +517,9 @@ public final class MainActivity extends Activity
         // than quitting, so the toggle has to be honoured here too.
         if (!projected && closeOnAaExit()) return;
         phoneReleasedScreen = !projected;
-        overlayPinned = !projected;
+        screen.panelPinned = !projected;
         if (!projected) setStatus(getString(R.string.status_screen_returned));
-        updateOverlay();
+        render();
     }
 
     // ---- ServerScan.Listener ----------------------------------------------
@@ -507,9 +532,10 @@ public final class MainActivity extends Activity
     @Override
     public void onScanDone(String ip) {
         scan = null;    // finished on its own; nothing left to cancel
+        screen.scanning = false;
         if (ip == null) {
             setStatus(getString(R.string.scan_none));
-            updateOverlay();
+            render();
             return;
         }
         // Straight into the manual-IP path, which already saves the address.
@@ -567,17 +593,18 @@ public final class MainActivity extends Activity
         // Only while projecting: idle, the panel is already up and a long BACK
         // should still leave the app the way it normally does. It would also
         // leave the pin set for a session the user never started by hand.
-        if (keyCode == KeyEvent.KEYCODE_BACK && projecting) {
+        // Not while settings are up: the pin would toggle invisibly behind them.
+        if (keyCode == KeyEvent.KEYCODE_BACK && screen.projecting && !screen.settingsOpen) {
             backWasLongPress = true;
-            overlayPinned = !overlayPinned;
+            screen.panelPinned = !screen.panelPinned;
             // Going back to Android Auto after it handed the screen over means
             // asking for it: it will not resume on its own.
-            if (!overlayPinned && phoneReleasedScreen && service != null) {
+            if (!screen.panelPinned && phoneReleasedScreen && service != null) {
                 phoneReleasedScreen = false;
                 setStatus("resuming Android Auto");
                 service.resumeProjection();
             }
-            updateOverlay();
+            render();
             return true;
         }
         return super.onKeyLongPress(keyCode, event);
@@ -587,6 +614,9 @@ public final class MainActivity extends Activity
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (backWasLongPress) return true;
+            // Settings first, or BACK is swallowed by Android Auto and the only
+            // way out of the screen is the on-screen button.
+            if (closeSettings()) return true;
             // Short press: hand it to AA, or fall back to leaving the app when
             // there is no session to hand it to.
             if (keyInput.tap(keyCode)) return true;

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A head unit is read at a glance, in the dark, from an arm's length away, often
+  through a resistive panel with a matte film on it. So: near-black rather than
+  pure black (pure black next to a bright accent haloes on cheap LCDs), one
+  accent, and text that never drops below roughly 4.5:1 on the surface it sits on.
+-->
+<resources>
+
+    <!-- Panel behind the settings screen. Opaque: it is a destination. -->
+    <color name="bg">#FF0E1013</color>
+    <!-- The control panel, which can sit over live video. Nearly opaque, so the
+         text is readable but you can still tell the stream is running. -->
+    <color name="scrim">#F20E1013</color>
+    <!-- Fields and secondary buttons. -->
+    <color name="surface">#FF171B20</color>
+    <color name="surface_press">#FF232A31</color>
+    <!-- Hairlines: dividers and outlines. -->
+    <color name="line">#FF2C333B</color>
+
+    <!-- One accent, on the connect actions and nowhere else. -->
+    <color name="accent">#FF3DDC84</color>
+    <color name="accent_press">#FF2CB86B</color>
+    <color name="on_accent">#FF06130B</color>
+
+    <!-- 16.8:1 on bg -->
+    <color name="text">#FFF2F5F7</color>
+    <!-- 8.1:1 for labels and values -->
+    <color name="text_dim">#FF9AA4AE</color>
+    <!-- 5.0:1 for captions and help, still above the 4.5:1 floor -->
+    <color name="text_faint">#FF808B95</color>
+
+    <!-- Disconnect only. Not an error colour; a "this ends the session" colour. -->
+    <color name="danger">#FFFF6F5E</color>
+</resources>

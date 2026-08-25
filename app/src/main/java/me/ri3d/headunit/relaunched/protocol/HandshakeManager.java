@@ -31,7 +31,7 @@ public final class HandshakeManager {
         this.ssl = ssl;
     }
 
-    public void sendVersionRequest() throws IOException {
+    public void sendVersionRequest() {
         Utils.putU16(versionPayload, 0, Config.PROTOCOL_MAJOR);
         Utils.putU16(versionPayload, 2, Config.PROTOCOL_MINOR);
         writer.sendPlain(CH_CONTROL, MSG_VERSION_REQUEST, versionPayload, 0, 4);
@@ -68,6 +68,14 @@ public final class HandshakeManager {
      * @return true once the handshake is complete
      */
     public boolean onSslHandshake(byte[] buf, int off, int len) throws IOException {
+        // Once we are up, the writer thread owns the engine's outbound buffers.
+        // A late SSL_HANDSHAKE from the phone would drive them from the session
+        // thread at the same time; there is nothing useful to do with one
+        // anyway, since renegotiation is not part of this protocol.
+        if (ssl.isHandshakeComplete()) {
+            Logger.w("handshake: ignoring SSL_HANDSHAKE after the handshake finished");
+            return true;
+        }
         byte[] out = ssl.handshake(buf, off, len);
         if (out != null) {
             writer.sendPlain(CH_CONTROL, MSG_SSL_HANDSHAKE, out, 0, out.length);
@@ -76,7 +84,7 @@ public final class HandshakeManager {
     }
 
     /** Last plaintext message; after this both sides encrypt. */
-    public void sendAuthComplete() throws IOException {
+    public void sendAuthComplete() {
         Proto.W w = new Proto.W(16);
         Messages.authComplete(w);
         writer.sendPlain(CH_CONTROL, MSG_AUTH_COMPLETE, w.buf, 0, w.pos);

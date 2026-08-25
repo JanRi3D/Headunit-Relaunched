@@ -64,7 +64,15 @@ android {
             "WakelockTimeout",
             // a SurfaceView is not a button, and the overlay is drawn over
             // video on purpose
-            "ClickableViewAccessibility", "Overdraw", "ButtonStyle"
+            "ClickableViewAccessibility", "Overdraw", "ButtonStyle",
+            // paddingStart/marginStart are API 17, so the layouts use Left/Right
+            // and the manifest never opts into RTL mirroring
+            "RtlHardcoded",
+            // an IP address is not a thing to autofill, and autofill is API 26
+            "Autofill",
+            // commit() on purpose: a head unit gets its power cut, not shut down,
+            // and apply() can lose the write that just happened
+            "ApplySharedPref"
         )
     }
 

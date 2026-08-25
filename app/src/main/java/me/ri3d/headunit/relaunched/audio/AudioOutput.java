@@ -10,6 +10,7 @@ import android.os.Looper;
 
 import me.ri3d.headunit.relaunched.Config;
 import me.ri3d.headunit.relaunched.util.Logger;
+import me.ri3d.headunit.relaunched.util.Utils;
 
 /**
  * One PCM sink: an AudioTrack plus a fixed ring of reusable buffers and one
@@ -33,8 +34,6 @@ public final class AudioOutput {
 
     private final byte[][] slots;
     private final int[] slotLen;
-    /** One slot is always held back so the consumer's in-flight buffer cannot be recycled under it. */
-    private final int capacity;
 
     private int head, count;
     private final Object lock = new Object();
@@ -65,7 +64,6 @@ public final class AudioOutput {
         this.gain = gain;
         this.slots = new byte[Config.AUDIO_RING_SLOTS][Config.AUDIO_SLOT_BYTES];
         this.slotLen = new int[Config.AUDIO_RING_SLOTS];
-        this.capacity = Config.AUDIO_RING_SLOTS - 1;
     }
 
     public boolean isRunning() { return running; }
@@ -217,7 +215,7 @@ public final class AudioOutput {
         Logger.i("audio[" + name + "]: stopped");
     }
 
-    /** Copies PCM into the ring. Never blocks; drops the oldest buffer if full. */
+    /** Copies PCM into the ring. Never blocks; drops the incoming buffer if full. */
     public void offer(byte[] src, int off, int len) {
         if (!running || len <= 0) return;
         if (len > Config.AUDIO_SLOT_BYTES) {
@@ -236,12 +234,11 @@ public final class AudioOutput {
     private void offerOne(byte[] src, int off, int len) {
         synchronized (lock) {
             if (!running) return;
-            if (count == capacity) {
-                head = (head + 1) % slots.length; // drop oldest: keeps latency bounded
-                count--;
-                drops++;
-            }
-            int i = (head + count) % slots.length;
+            // Full means the Pump is still inside AudioTrack.write() with a slot
+            // of ours. Dropping this buffer keeps latency bounded without ever
+            // reaching the one it is reading -- see Utils.ringSlot.
+            int i = Utils.ringSlot(head, count, slots.length);
+            if (i < 0) { drops++; return; }
             System.arraycopy(src, off, slots[i], 0, len);
             slotLen[i] = len;
             count++;

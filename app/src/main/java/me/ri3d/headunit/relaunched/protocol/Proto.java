@@ -101,11 +101,6 @@ public final class Proto {
             buf[handle - 1] = (byte) ((len >>> 7) & 0x7F);
         }
 
-        public byte[] toByteArray() {
-            byte[] out = new byte[pos];
-            System.arraycopy(buf, 0, out, 0, pos);
-            return out;
-        }
     }
 
     // =====================================================================
@@ -159,8 +154,20 @@ public final class Proto {
 
         public boolean bool() { return varint() != 0; }
 
-        /** Length of a WIRE_BYTES field; leaves pos at the start of the data. */
-        public int len() { return (int) varint(); }
+        /**
+         * Length of a WIRE_BYTES field; leaves pos at the start of the data.
+         *
+         * Clamped to what is actually left. This is the one parser in the app
+         * fed straight off the wire, and a length varint the peer got wrong (or
+         * a frame that lost bytes) would otherwise walk str() and nested() off
+         * the end of the array. Clamping here fixes every caller at once, and a
+         * truncated field parses as a short one instead of killing the session.
+         */
+        public int len() {
+            long n = varint();
+            int left = end - pos;
+            return (n < 0 || n > left) ? left : (int) n;
+        }
 
         public String str() {
             int n = len();
@@ -180,7 +187,7 @@ public final class Proto {
         public void skip() {
             switch (wire) {
                 case WIRE_VARINT: varint(); break;
-                case WIRE_64BIT:  pos += 8; break;
+                case WIRE_64BIT:  pos = Math.min(pos + 8, end); break;
                 case WIRE_BYTES: {
                     // NOT `pos += len()`. Java reads the left-hand `pos` before
                     // calling len(), so the bytes len() consumes for the length
@@ -190,7 +197,7 @@ public final class Proto {
                     pos += n;
                     break;
                 }
-                case WIRE_32BIT:  pos += 4; break;
+                case WIRE_32BIT:  pos = Math.min(pos + 4, end); break;
                 default:          pos = end; break; // unknown wire type: bail out
             }
         }

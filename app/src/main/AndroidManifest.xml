@@ -28,7 +28,8 @@
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="landscape">
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="stateHidden">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

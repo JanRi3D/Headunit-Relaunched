@@ -1,170 +1,613 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  SurfaceView + a thin overlay. No ConstraintLayout, no CardView: on a weak GPU
-  every extra composited layer costs frames, and this needs exactly two.
+  SurfaceView plus three overlays, only ever one of which is visible: the control
+  panel, the settings screen, and the reconnect spinner. No ConstraintLayout, no
+  CardView: on a weak GPU every extra composited layer costs frames.
+
+  Everything here is laid out for a landscape panel read at arm's length through
+  a resistive touchscreen, so: two columns rather than one tall one, nothing
+  tappable under 48dp, and one accent colour that appears only on the buttons
+  that start a session.
+
+  API 16: no Start/End margins, no elevation, no letterSpacing. Left/Right only.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#FF000000">
 
     <SurfaceView
         android:id="@+id/surface"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!--
-      Scrolls because the control block is now taller than an 800x480 panel once
-      the software keyboard is up. It only ever composites while the overlay is
-      visible, which is never while projecting.
-    -->
+    <!-- ===================================================================
+         Control panel. Full bleed with a near-opaque scrim: when it is pinned
+         over a live session the text has to stay readable, and a panel that
+         only half covers the video reads as a glitch rather than a menu.
+
+         Scrolls because the block is taller than an 800x480 panel once the
+         software keyboard is up.
+         =================================================================== -->
     <ScrollView
         android:id="@+id/overlay"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
+        android:layout_height="match_parent"
+        android:background="@color/scrim"
         android:fillViewport="true">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
-
-        <TextView
-            android:id="@+id/status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingBottom="12dp"
-            android:text="@string/status_idle"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-
+        <!--
+          focusable so the IP box does not hold focus before anyone has touched
+          it. A field wearing the accent outline on launch reads as "type here",
+          and the accent is supposed to mean "this starts a session".
+        -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/btn_usb"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/connect_usb" />
-
-            <Button
-                android:id="@+id/btn_wifi"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/connect_wifi" />
-
-            <Button
-                android:id="@+id/btn_stop"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/disconnect" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingTop="8dp">
-
-            <EditText
-                android:id="@+id/edit_ip"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/hint_phone_ip"
-                android:imeOptions="actionGo"
-                android:inputType="number|numberDecimal"
-                android:digits="0123456789."
-                android:singleLine="true"
-                android:textColor="#FFFFFF"
-                android:textColorHint="#888888" />
-
-            <Button
-                android:id="@+id/btn_scan"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/scan" />
-
-            <Button
-                android:id="@+id/btn_ip"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/connect_ip" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btn_resolution"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
             android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingTop="8dp">
+            android:orientation="vertical"
+            android:paddingBottom="20dp"
+            android:paddingLeft="24dp"
+            android:paddingRight="24dp"
+            android:paddingTop="20dp">
 
-            <Button
-                android:id="@+id/btn_dpi_down"
-                android:layout_width="wrap_content"
+            <!-- Header: the status line is the anchor. It is the one thing on
+                 this screen that changes, and the reason anyone looks here. -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/dpi_smaller" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/dpi_value"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginRight="16dp"
+                    android:orientation="vertical">
 
-            <Button
-                android:id="@+id/btn_dpi_up"
-                android:layout_width="wrap_content"
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/brand"
+                        android:textColor="@color/text_faint"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-light"
+                        android:paddingTop="2dp"
+                        android:text="@string/status_idle"
+                        android:textColor="@color/text"
+                        android:textSize="21sp" />
+                </LinearLayout>
+
+                <!--
+                  Disconnect belongs up here, not under USB. It ends whatever
+                  session is running whichever way it started, so sitting at the
+                  bottom of the cable column read as "disconnect the cable".
+                -->
+                <Button
+                    android:id="@+id/btn_stop"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginRight="10dp"
+                    android:background="@drawable/btn_secondary"
+                    android:minWidth="132dp"
+                    android:paddingLeft="18dp"
+                    android:paddingRight="18dp"
+                    android:text="@string/disconnect"
+                    android:textAllCaps="false"
+                    android:textColor="@color/danger"
+                    android:textSize="15sp" />
+
+                <Button
+                    android:id="@+id/btn_settings"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:background="@drawable/btn_secondary"
+                    android:minWidth="112dp"
+                    android:paddingLeft="18dp"
+                    android:paddingRight="18dp"
+                    android:text="@string/settings_open"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_dim"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="20dp"
+                android:layout_marginTop="18dp"
+                android:background="@color/line" />
+
+            <!-- Two columns, because a landscape panel that stacks everything
+                 into one narrow strip wastes the half of the screen the eye
+                 lands on second. -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/dpi_bigger" />
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <!--
+                  Two ways in, each its own column, each with the same shape:
+                  label, control, one line saying when you would use it. Wi-Fi
+                  used to be a second green button here and it was the wrong
+                  offer: the wireless path is scan, address, connect, and a
+                  button that skipped straight past all three looked like a
+                  shortcut for it.
+                -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="10dp"
+                        android:text="@string/section_usb"
+                        android:textColor="@color/text_faint"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/btn_usb"
+                        android:layout_width="match_parent"
+                        android:layout_height="66dp"
+                        android:background="@drawable/btn_primary"
+                        android:text="@string/connect_usb"
+                        android:textAllCaps="false"
+                        android:textColor="@color/on_accent"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="10dp"
+                        android:text="@string/hint_usb"
+                        android:textColor="@color/text_faint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- The wireless path, in the order you walk it: address, then
+                     scan to fill it in or connect to use it. -->
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="24dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingBottom="10dp"
+                        android:text="@string/section_wireless"
+                        android:textColor="@color/text_faint"
+                        android:textSize="11sp" />
+
+                    <EditText
+                        android:id="@+id/edit_ip"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:background="@drawable/field"
+                        android:digits="0123456789."
+                        android:hint="@string/hint_phone_ip"
+                        android:imeOptions="actionGo"
+                        android:inputType="number|numberDecimal"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
+                        android:singleLine="true"
+                        android:textColor="@color/text"
+                        android:textColorHint="@color/text_faint"
+                        android:textSize="17sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btn_scan"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_marginRight="10dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/btn_secondary"
+                            android:text="@string/scan"
+                            android:textAllCaps="false"
+                            android:textColor="@color/text_dim"
+                            android:textSize="16sp" />
+
+                        <Button
+                            android:id="@+id/btn_ip"
+                            android:layout_width="0dp"
+                            android:layout_height="52dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/btn_secondary"
+                            android:text="@string/connect_ip"
+                            android:textAllCaps="false"
+                            android:textColor="@color/accent"
+                            android:textSize="16sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="10dp"
+                        android:text="@string/hint_manual"
+                        android:textColor="@color/text_faint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
-
-        <Button
-            android:id="@+id/btn_exit_mode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="4dp"
-            android:text="@string/hint_headunit_server"
-            android:textColor="#AAAAAA"
-            android:textSize="12sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="2dp"
-            android:text="@string/hint_overlay_toggle"
-            android:textColor="#AAAAAA"
-            android:textSize="12sp" />
-    </LinearLayout>
     </ScrollView>
 
-    <!--
-      Reconnect screen, on top of the panel because it replaces it while a
-      session is coming back. The indeterminate ProgressBar is the platform's
-      own animation, so there is no drawable or animator to ship.
-    -->
+    <!-- ===================================================================
+         Settings. A destination rather than an overlay, so it is opaque and
+         has its own back affordance. Everything here is something you set once
+         and then forget, which is exactly why it does not belong on the panel
+         you look at every time you get in the car.
+         =================================================================== -->
+    <ScrollView
+        android:id="@+id/settings"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg"
+        android:fillViewport="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="24dp"
+            android:paddingLeft="24dp"
+            android:paddingRight="24dp"
+            android:paddingTop="20dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btn_settings_back"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginRight="16dp"
+                    android:background="@drawable/btn_secondary"
+                    android:minWidth="96dp"
+                    android:paddingLeft="18dp"
+                    android:paddingRight="18dp"
+                    android:text="@string/settings_back"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text_dim"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-light"
+                    android:text="@string/settings"
+                    android:textColor="@color/text"
+                    android:textSize="21sp" />
+
+                <!-- Same words the panel shows. A resolution change rebuilds the
+                     session, and you want to see that happen without leaving. -->
+                <TextView
+                    android:id="@+id/settings_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:gravity="right"
+                    android:maxWidth="300dp"
+                    android:singleLine="true"
+                    android:textColor="@color/text_faint"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="4dp"
+                android:layout_marginTop="18dp"
+                android:background="@color/line" />
+
+            <!-- connection -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:paddingTop="14dp"
+                android:text="@string/section_connection"
+                android:textColor="@color/text_faint"
+                android:textSize="11sp" />
+
+            <!--
+              The Bluetooth handshake flow, which is how wireless Android Auto
+              works in a shipped car: the phone dials us after we tell it where
+              to go over RFCOMM. It lives here rather than on the panel because
+              it is a one-off pairing, not the way you start a drive.
+            -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="11dp"
+                android:paddingTop="11dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="20dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_bt_pair"
+                        android:textColor="@color/text"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="2dp"
+                        android:text="@string/desc_bt_pair"
+                        android:textColor="@color/text_faint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btn_bt_pair"
+                    android:layout_width="wrap_content"
+                    android:layout_height="52dp"
+                    android:background="@drawable/btn_secondary"
+                    android:minWidth="196dp"
+                    android:paddingLeft="16dp"
+                    android:paddingRight="16dp"
+                    android:text="@string/bt_pair"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <!-- display -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:paddingTop="14dp"
+                android:text="@string/section_display"
+                android:textColor="@color/text_faint"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="11dp"
+                android:paddingTop="11dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="20dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_resolution"
+                        android:textColor="@color/text"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="2dp"
+                        android:text="@string/desc_resolution"
+                        android:textColor="@color/text_faint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btn_resolution"
+                    android:layout_width="wrap_content"
+                    android:layout_height="52dp"
+                    android:background="@drawable/btn_secondary"
+                    android:minWidth="196dp"
+                    android:paddingLeft="16dp"
+                    android:paddingRight="16dp"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/line" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="11dp"
+                android:paddingTop="11dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="20dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_ui_scale"
+                        android:textColor="@color/text"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="2dp"
+                        android:text="@string/desc_ui_scale"
+                        android:textColor="@color/text_faint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Stepper. The value sits between its own two buttons so the
+                     pair reads as one control rather than three. -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btn_dpi_down"
+                        android:layout_width="56dp"
+                        android:layout_height="52dp"
+                        android:background="@drawable/btn_secondary"
+                        android:text="@string/dpi_smaller"
+                        android:textColor="@color/text"
+                        android:textSize="22sp" />
+
+                    <TextView
+                        android:id="@+id/dpi_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:minWidth="164dp"
+                        android:textColor="@color/text_dim"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btn_dpi_up"
+                        android:layout_width="56dp"
+                        android:layout_height="52dp"
+                        android:background="@drawable/btn_secondary"
+                        android:text="@string/dpi_bigger"
+                        android:textColor="@color/text"
+                        android:textSize="22sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- behaviour -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:paddingTop="16dp"
+                android:text="@string/section_behaviour"
+                android:textColor="@color/text_faint"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingBottom="11dp"
+                android:paddingTop="11dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginRight="20dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/label_exit_mode"
+                        android:textColor="@color/text"
+                        android:textSize="16sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingTop="2dp"
+                        android:text="@string/desc_exit_mode"
+                        android:textColor="@color/text_faint"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btn_exit_mode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="52dp"
+                    android:background="@drawable/btn_secondary"
+                    android:minWidth="196dp"
+                    android:paddingLeft="16dp"
+                    android:paddingRight="16dp"
+                    android:textAllCaps="false"
+                    android:textColor="@color/text"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <!-- help -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingBottom="6dp"
+                android:paddingTop="16dp"
+                android:text="@string/section_help"
+                android:textColor="@color/text_faint"
+                android:textSize="11sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="4dp"
+                android:text="@string/hint_headunit_server"
+                android:textColor="@color/text_faint"
+                android:textSize="13sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/hint_overlay_toggle"
+                android:textColor="@color/text_faint"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ===================================================================
+         Reconnect / scanning. Topmost, because it replaces whatever was under
+         it while a session is coming back. The indeterminate ProgressBar is the
+         platform's own animation, so there is no drawable or animator to ship.
+         =================================================================== -->
     <LinearLayout
         android:id="@+id/reconnect"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#000000"
+        android:background="@color/bg"
         android:gravity="center"
         android:orientation="vertical"
         android:visibility="gone">
@@ -179,33 +622,39 @@
             android:id="@+id/reconnect_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingTop="16dp"
+            android:fontFamily="sans-serif-light"
+            android:paddingTop="18dp"
             android:text="@string/reconnecting"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp" />
+            android:textColor="@color/text"
+            android:textSize="22sp" />
 
         <TextView
             android:id="@+id/reconnect_detail"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingTop="6dp"
-            android:textColor="#AAAAAA"
+            android:textColor="@color/text_dim"
             android:textSize="13sp" />
 
         <!-- An unplug you meant should not leave the unit hunting forever. -->
         <Button
             android:id="@+id/btn_cancel_reconnect"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/reconnect_cancel" />
+            android:layout_height="52dp"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/btn_secondary"
+            android:minWidth="200dp"
+            android:text="@string/reconnect_cancel"
+            android:textAllCaps="false"
+            android:textColor="@color/text_dim"
+            android:textSize="16sp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:paddingTop="10dp"
+            android:paddingTop="14dp"
             android:text="@string/reconnect_hint"
-            android:textColor="#666666"
+            android:textColor="@color/text_faint"
             android:textSize="12sp" />
     </LinearLayout>
 </FrameLayout>

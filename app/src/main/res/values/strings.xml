@@ -1,32 +1,62 @@
 <resources>
     <string name="app_name">Headunit Relaunched</string>
-    <string name="status_idle">Idle - plug in a phone or tap a button</string>
+    <string name="brand">ANDROID AUTO</string>
+    <string name="status_idle">Idle — plug in a phone or tap a button</string>
+
+    <!-- control panel -->
+    <string name="section_usb">BY CABLE</string>
+    <string name="section_wireless">OVER WI-FI</string>
     <string name="connect_usb">USB</string>
-    <string name="connect_wifi">Wi-Fi</string>
+    <string name="hint_usb">Plugging a phone in already connects on its own. This is the retry.</string>
     <string name="connect_ip">Connect</string>
     <string name="scan">Scan</string>
-    <string name="scanning">Scanning for a phone...</string>
-    <!-- e.g. "192.168.1.* - 24 of 254" -->
-    <string name="scan_progress">%1$s* - %2$d of %3$d</string>
-    <string name="scan_none">Nothing answered on port 5277. On the phone: Android Auto - About - tap the header 10x - Start head unit server. Details: adb logcat -s HU</string>
-    <string name="scan_offline">No Wi-Fi address - join the phone network first</string>
+    <string name="scanning">Scanning for a phone…</string>
+    <!-- e.g. "192.168.1.* — 24 of 254" -->
+    <string name="scan_progress">%1$s* — %2$d of %3$d</string>
+    <string name="scan_none">Nothing answered on port 5277. On the phone: Android Auto → About → tap the header 10× → Start head unit server. Details: adb logcat -s HU</string>
+    <string name="scan_offline">No Wi-Fi address — join the phone network first</string>
     <string name="disconnect">Disconnect</string>
-    <string name="hint_phone_ip">Phone IP, e.g. 192.168.1.42</string>
-    <string name="hint_headunit_server">On the phone: Android Auto - Developer settings - Start head unit server (port 5277)</string>
-    <string name="hint_overlay_toggle">Hold BACK while projecting to show or hide this panel</string>
-    <string name="status_screen_returned">Android Auto gave the screen back - hold BACK to return to it</string>
-    <string name="dpi_smaller">Smaller</string>
-    <string name="dpi_bigger">Bigger</string>
-    <!-- e.g. "UI scale: 140 dpi (914 x 549 dp)" -->
-    <string name="dpi_format">UI scale: %1$d dpi (%2$d x %3$d dp)</string>
-    <!-- e.g. "Resolution: Auto - 800x480" -->
-    <string name="res_format">Resolution: %1$s - %2$d x %3$d</string>
-    <!-- e.g. "Resolution: 1080p - capped to 800x480 (panel 800x480)" -->
-    <string name="res_format_capped">Resolution: %1$s - capped to %2$d x %3$d (panel %4$d x %5$d)</string>
+    <string name="hint_phone_ip">192.168.1.42</string>
+    <string name="hint_manual">Scan sweeps this network for a phone running its head unit server on port 5277.</string>
+    <string name="status_screen_returned">Android Auto gave the screen back — hold BACK to return to it</string>
+
+    <!-- settings -->
+    <string name="settings">Settings</string>
+    <string name="settings_open">Settings</string>
+    <string name="settings_back">‹ Back</string>
+    <string name="section_connection">CONNECTION</string>
+    <string name="label_bt_pair">Wireless pairing</string>
+    <string name="desc_bt_pair">Let the phone dial us after a Bluetooth handshake, instead of scanning for it.</string>
+    <string name="bt_pair">Wait for phone</string>
+    <string name="section_display">DISPLAY</string>
+    <string name="section_behaviour">BEHAVIOUR</string>
+    <string name="section_help">HELP</string>
+
+    <string name="label_resolution">Resolution</string>
+    <string name="desc_resolution">Stream size the phone renders at, capped to the panel.</string>
+    <!-- e.g. "Auto · 1280 × 720" -->
+    <string name="res_format">%1$s · %2$d × %3$d</string>
+    <!-- e.g. "1080p · 800 × 480 (capped)" -->
+    <string name="res_format_capped">%1$s · %2$d × %3$d (capped)</string>
     <string name="res_auto">Auto</string>
-    <string name="exit_mode_panel">Android Auto exit - back to this panel</string>
-    <string name="exit_mode_close">Android Auto exit - close the app</string>
-    <string name="reconnecting">Reconnecting...</string>
+
+    <string name="label_ui_scale">UI scale</string>
+    <string name="desc_ui_scale">How large Android Auto draws its own interface.</string>
+    <string name="dpi_smaller">−</string>
+    <string name="dpi_bigger">+</string>
+    <!-- e.g. "160 dpi · 1280 × 720 dp" -->
+    <string name="dpi_format">%1$d dpi · %2$d × %3$d dp</string>
+
+    <string name="label_exit_mode">Android Auto exit button</string>
+    <string name="desc_exit_mode">What its own exit button does here.</string>
+    <string name="exit_mode_panel">Back to this panel</string>
+    <string name="exit_mode_close">Close the app</string>
+
+    <string name="hint_headunit_server">On the phone: Android Auto → Developer settings → Start head unit server (port 5277).</string>
+    <string name="hint_overlay_toggle">Hold BACK while projecting to show or hide the control panel.</string>
+
+    <!-- reconnect / scanning screen -->
+    <string name="reconnecting">Reconnecting…</string>
     <string name="reconnect_cancel">Stop searching</string>
     <string name="reconnect_hint">Tap anywhere else to show the controls</string>
 </resources>

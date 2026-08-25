@@ -11,8 +11,15 @@ public final class Logger {
 
     public static final String TAG = "HU";
 
-    /** Log.VERBOSE .. Log.ERROR. Anything below this is dropped without formatting. */
-    public static int LEVEL = Log.DEBUG;
+    /**
+     * Log.VERBOSE .. Log.ERROR. Anything below this is dropped without formatting.
+     *
+     * INFO by default, not DEBUG: at DEBUG every non-media message logs a line
+     * and every dropped video frame logs another, and on the hardware this app
+     * targets those writes cost frames. Raise it from a debugger or a one-line
+     * edit when you are chasing something.
+     */
+    public static int LEVEL = Log.INFO;
 
     private Logger() {}
 

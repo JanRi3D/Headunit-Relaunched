@@ -81,13 +81,13 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
 
     public void start() {
         running = true;
+        writer.start();
         thread = new Thread(this, "hu-session");
         thread.start();
     }
 
     public void stop() {
         running = false;
-        parser.stop();
         transport.close();   // unblocks a read in progress
         Thread t = thread;
         thread = null;
@@ -95,6 +95,7 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
             try { t.join(1500); } catch (InterruptedException ignored) {}
         }
         channels.release();
+        writer.stop();       // after the channels, so their last sends are not half-written
         ssl.close();
     }
 
@@ -133,6 +134,9 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
             if (endReason != null) reason = endReason;
             channels.release();
             transport.close();
+            // The service does not call stop() for a session that ends on its
+            // own, so the writer thread has to be retired here too.
+            writer.stop();
             Logger.i("session: ended (" + reason + ")");
             if (listener != null) listener.onSessionEnded(reason);
         }
@@ -158,7 +162,7 @@ public final class AndroidAutoSession implements MessageParser.Sink, Runnable {
         channels.onMessage(channel, msgId, buf, off, len);
     }
 
-    private void openChannel(int channel) throws IOException {
+    private void openChannel(int channel) {
         Logger.i("control: open channel " + channel);
         Proto.W w = writer.begin();
         Messages.channelOpenResponse(w, STATUS_OK);

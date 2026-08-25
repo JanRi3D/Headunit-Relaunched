@@ -196,8 +196,23 @@ public final class Config {
     /** SecurityMode: 8 = WPA2_PERSONAL, 1 = OPEN. */
     public static final int WIFI_SECURITY_MODE = 8;
 
-    /** USB bulk read timeout, ms. Also the shutdown responsiveness bound. */
-    public static final int USB_READ_TIMEOUT_MS  = 1000;
+    /**
+     * USB bulk read timeout, ms. 0 means wait indefinitely, which is what this
+     * wants to be: a timeout that expires with a transfer part-filled throws
+     * away what it had, and the missing bytes desync the frame stream for good
+     * -- an SSL BAD_RECORD_MAC a moment later. Nothing is lost by waiting,
+     * since close() releases the interface and that kills a read in progress.
+     *
+     * Give it a few seconds only if some host controller misbehaves on an
+     * infinite wait. Anything short enough to expire during normal idle brings
+     * the byte loss back.
+     *
+     * ponytail: no ping watchdog -- a phone that stays attached but stops
+     * talking hangs the session until it is unplugged. Add one on the control
+     * channel if that ever shows up in practice.
+     */
+    public static final int USB_READ_TIMEOUT_MS  = 0;
+    /** Writes stay bounded: a stuck write must fail, not block the UI thread. */
     public static final int USB_WRITE_TIMEOUT_MS = 2000;
 
     // ---- protocol ----------------------------------------------------------

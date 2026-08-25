@@ -7,7 +7,6 @@ import android.media.audiofx.AudioEffect;
 import android.media.audiofx.AutomaticGainControl;
 import android.media.audiofx.NoiseSuppressor;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,7 +45,7 @@ public final class MicChannel {
         this.writer = writer;
     }
 
-    public void onMessage(int msgId, byte[] buf, int off, int len) throws IOException {
+    public void onMessage(int msgId, byte[] buf, int off, int len) {
         switch (msgId) {
             case AV_SETUP_REQUEST: {
                 Proto.W w = writer.begin();
@@ -189,12 +188,10 @@ public final class MicChannel {
                 }
                 long ts = System.nanoTime() / 1000L;
                 for (int i = 0; i < 8; i++) frame[i] = (byte) (ts >>> (56 - 8 * i));
-                try {
-                    writer.send(CH_MIC, AV_MEDIA_WITH_TIMESTAMP, frame, 0, 8 + n);
-                } catch (IOException e) {
-                    Logger.w("mic: send failed, stopping");
-                    break;
-                }
+                // Queues and returns. A dead link is not this thread's problem:
+                // the session tears down on the read side and releases the
+                // channels, which stops this capture.
+                writer.send(CH_MIC, AV_MEDIA_WITH_TIMESTAMP, frame, 0, 8 + n);
             }
         }
     }

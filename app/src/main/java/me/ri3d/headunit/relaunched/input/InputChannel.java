@@ -1,7 +1,5 @@
 package me.ri3d.headunit.relaunched.input;
 
-import java.io.IOException;
-
 import me.ri3d.headunit.relaunched.protocol.Messages;
 import me.ri3d.headunit.relaunched.protocol.MessageWriter;
 import me.ri3d.headunit.relaunched.protocol.Proto;
@@ -13,8 +11,10 @@ import static me.ri3d.headunit.relaunched.protocol.ProtocolConstants.*;
  * Input channel: everything the head unit sends *to* the phone -- touches,
  * hardware buttons, rotary encoders.
  *
- * Called from the UI thread. MessageWriter serialises for us, so no extra
- * handler or queue is needed here.
+ * Called from the UI thread, which is why none of these send anything
+ * themselves: MessageWriter queues the message and its own thread does the TLS
+ * wrap and the write. A drag is 60 of these a second and the transport is
+ * allowed two seconds to fail a write.
  */
 public final class InputChannel {
 
@@ -24,7 +24,7 @@ public final class InputChannel {
         this.writer = writer;
     }
 
-    public void onMessage(int msgId, byte[] buf, int off, int len) throws IOException {
+    public void onMessage(int msgId, byte[] buf, int off, int len) {
         switch (msgId) {
             case IN_BINDING_REQUEST: {
                 // The phone lists the scan codes it wants; we accept the lot.
@@ -44,33 +44,21 @@ public final class InputChannel {
     private static long now() { return System.nanoTime(); }
 
     public void sendTouch(int action, int x, int y) {
-        try {
-            Proto.W w = writer.begin();
-            Messages.touchEvent(w, now(), action, x, y);
-            writer.end(CH_INPUT, IN_EVENT_INDICATION);
-        } catch (IOException e) {
-            Logger.w("input: touch send failed: " + e);
-        }
+        Proto.W w = writer.begin();
+        Messages.touchEvent(w, now(), action, x, y);
+        writer.end(CH_INPUT, IN_EVENT_INDICATION);
     }
 
     public void sendButton(int scanCode, boolean pressed) {
-        try {
-            Proto.W w = writer.begin();
-            Messages.buttonEvent(w, now(), scanCode, pressed);
-            writer.end(CH_INPUT, IN_EVENT_INDICATION);
-        } catch (IOException e) {
-            Logger.w("input: button send failed: " + e);
-        }
+        Proto.W w = writer.begin();
+        Messages.buttonEvent(w, now(), scanCode, pressed);
+        writer.end(CH_INPUT, IN_EVENT_INDICATION);
     }
 
     /** One click of a rotary encoder. Negative is counter-clockwise. */
     public void sendScroll(int delta) {
-        try {
-            Proto.W w = writer.begin();
-            Messages.scrollEvent(w, now(), delta);
-            writer.end(CH_INPUT, IN_EVENT_INDICATION);
-        } catch (IOException e) {
-            Logger.w("input: scroll send failed: " + e);
-        }
+        Proto.W w = writer.begin();
+        Messages.scrollEvent(w, now(), delta);
+        writer.end(CH_INPUT, IN_EVENT_INDICATION);
     }
 }

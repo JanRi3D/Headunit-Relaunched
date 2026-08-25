@@ -163,6 +163,40 @@ public class ProtocolTest {
         assertEquals(0x2A, (int) r.varint());
     }
 
+    /**
+     * Everything this parser reads comes off the wire from the phone. A length
+     * varint that overruns the message -- a bug at the far end, or a frame that
+     * lost bytes -- used to walk str() and skip() straight off the array and
+     * take the session down with an exception from the middle of the read loop.
+     */
+    @Test
+    public void lengthsThatOverrunTheMessageAreClamped() {
+        // field 1, WIRE_BYTES, length 200 -- with only 3 bytes actually present.
+        byte[] lying = { (byte) ((1 << 3) | Proto.WIRE_BYTES), (byte) 200, 1, 'h', 'i' };
+
+        Proto.R r = new Proto.R().set(lying, 0, lying.length);
+        assertTrue(r.next());
+        String s = r.str();
+        assertEquals("truncated to what was there", "hi", s);
+        assertFalse("reader must be finished, not past the end", r.next());
+
+        // The same lie, skipped rather than read.
+        r.set(lying, 0, lying.length);
+        assertTrue(r.next());
+        r.skip();
+        assertFalse(r.next());
+    }
+
+    /** A fixed-width field can overrun the same way, with no length varint to clamp. */
+    @Test
+    public void truncatedFixedWidthFieldsDoNotOverrun() {
+        byte[] runt = { (byte) ((1 << 3) | Proto.WIRE_64BIT), 0, 0 };  // 8 bytes promised, 2 given
+        Proto.R r = new Proto.R().set(runt, 0, runt.length);
+        assertTrue(r.next());
+        r.skip();
+        assertFalse(r.next());
+    }
+
     /** The real ServiceDiscoveryResponse must survive a parse with all channels intact. */
     @Test
     public void serviceDiscoveryResponseParsesBack() {
@@ -425,7 +459,11 @@ public class ProtocolTest {
     private Captured roundTrip(int channel, int msgId, byte[] body) throws IOException {
         Loop loop = new Loop();
         MessageWriter writer = new MessageWriter(loop);
+        // Sends are queued for the writer thread now, so the bytes are not on
+        // the pipe until it has run. stop() drains, then joins.
+        writer.start();
         writer.send(channel, msgId, body, 0, body.length);
+        writer.stop();
 
         final Captured got = new Captured();
         MessageParser parser = new MessageParser(loop);

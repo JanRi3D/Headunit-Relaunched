@@ -62,9 +62,25 @@ public final class Ssl {
 
     private boolean handshakeComplete;
 
-    // Reusable wrappers so the steady-state encrypt/decrypt path allocates nothing.
-    private byte[] wrappedArray;
-    private ByteBuffer wrapped;
+    /**
+     * Reusable wrappers so the steady-state encrypt/decrypt path allocates
+     * nothing. One pair per direction, which is not tidiness: a single shared
+     * pair hands one direction a ByteBuffer over the other's array, and
+     * unwrapping a half-built plaintext message as if it were a TLS record is
+     * exactly the
+     *
+     *     BAD_DECRYPT / DECRYPTION_FAILED_OR_BAD_RECORD_MAC
+     *
+     * the session then dies with.
+     *
+     * There is exactly one thread on each side -- MessageWriter's writer thread
+     * wraps, the session thread unwraps -- and SSLEngine documents wrap and
+     * unwrap as safe to run concurrently, so no lock is needed here. That used
+     * to be an argument about who calls what; since outbound framing moved
+     * behind one thread it is a property of the code.
+     */
+    private byte[] inArray, outArray;
+    private ByteBuffer inBuf, outBuf;
 
     /**
      * Handshake wraps pass *no* source buffers, not one empty buffer.
@@ -409,13 +425,20 @@ public final class Ssl {
      * @return bytes written to dst
      */
     public int encrypt(byte[] src, int off, int len, byte[] dst, int dstOff) throws SSLException {
-        ByteBuffer s = reuse(src, off, len);
+        ByteBuffer s = reuseOut(src, off, len);
         int total = 0;
         while (s.hasRemaining()) {
             ((Buffer) netOut).clear();
             SSLEngineResult r = engine.wrap(s, netOut);
             ((Buffer) netOut).flip();
             int n = netOut.remaining();
+            // The caller's slack is a comment upstream; make it a check here.
+            // A cipher suite with fatter records than today's GCM would
+            // otherwise write past the frame buffer instead of failing.
+            if (dstOff + total + n > dst.length) {
+                throw new SSLException("ciphertext " + (dstOff + total + n)
+                        + " exceeds the " + dst.length + " byte frame buffer");
+            }
             netOut.get(dst, dstOff + total, n);
             total += n;
             if (r.bytesConsumed() == 0 && n == 0) break; // no progress: bail
@@ -430,7 +453,7 @@ public final class Ssl {
      * @return bytes written to dst
      */
     public int decrypt(byte[] src, int off, int len, byte[] dst, int dstOff) throws SSLException {
-        ByteBuffer s = reuse(src, off, len);
+        ByteBuffer s = reuseIn(src, off, len);
         int total = 0;
         while (s.hasRemaining()) {
             ((Buffer) appIn).clear();
@@ -438,6 +461,12 @@ public final class Ssl {
             ((Buffer) appIn).flip();
             int n = appIn.remaining();
             if (n > 0) {
+                // Peer-controlled sizes reach this one. Fail the frame rather
+                // than the array bounds.
+                if (dstOff + total + n > dst.length) {
+                    throw new SSLException("plaintext " + (dstOff + total + n)
+                            + " exceeds the " + dst.length + " byte frame buffer");
+                }
                 appIn.get(dst, dstOff + total, n);
                 total += n;
             }
@@ -449,17 +478,31 @@ public final class Ssl {
         return total;
     }
 
-    /** Re-target a cached ByteBuffer at the same backing array, no allocation. */
-    private ByteBuffer reuse(byte[] array, int off, int len) {
-        if (array != wrappedArray) {
-            wrappedArray = array;
-            wrapped = ByteBuffer.wrap(array);
+    /** Outgoing: cached wrapper over the writer's message buffer. */
+    private ByteBuffer reuseOut(byte[] array, int off, int len) {
+        if (array != outArray) {
+            outArray = array;
+            outBuf = ByteBuffer.wrap(array);
         }
-        Buffer b = wrapped;
-        b.clear();
-        b.limit(off + len);
-        b.position(off);
-        return wrapped;
+        return window(outBuf, off, len);
+    }
+
+    /** Incoming: cached wrapper over the parser's receive buffer. */
+    private ByteBuffer reuseIn(byte[] array, int off, int len) {
+        if (array != inArray) {
+            inArray = array;
+            inBuf = ByteBuffer.wrap(array);
+        }
+        return window(inBuf, off, len);
+    }
+
+    /** Re-target a cached ByteBuffer at part of its array, no allocation. */
+    private static ByteBuffer window(ByteBuffer b, int off, int len) {
+        Buffer x = b; // cast for API 16, as everywhere else in this class
+        x.clear();
+        x.limit(off + len);
+        x.position(off);
+        return b;
     }
 
     public void close() {

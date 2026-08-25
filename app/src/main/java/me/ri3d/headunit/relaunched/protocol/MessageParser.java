@@ -49,7 +49,6 @@ public final class MessageParser {
     private final int[] asmLen = new int[CH_COUNT];
 
     private Ssl ssl;
-    private volatile boolean running = true;
 
     public MessageParser(Transport transport) {
         this.transport = transport;
@@ -57,8 +56,6 @@ public final class MessageParser {
 
     /** Called once the TLS handshake is done; frames flagged ENCRYPTED are then unwrapped. */
     public void setSsl(Ssl ssl) { this.ssl = ssl; }
-
-    public void stop() { running = false; }
 
     /**
      * Reads and dispatches exactly one frame.
@@ -143,7 +140,7 @@ public final class MessageParser {
         sink.onMessage(channel, msgId, buf, off + 2, len - 2);
     }
 
-    /** Ensures n contiguous bytes are available at rxPos. False on EOF. */
+    /** Ensures n contiguous bytes are available at rxPos. False once the link is gone. */
     private boolean need(int n) throws IOException {
         while (rxEnd - rxPos < n) {
             if (rx.length - rxPos < n) {
@@ -152,14 +149,11 @@ public final class MessageParser {
                 rxEnd -= rxPos;
                 rxPos = 0;
             }
+            // <= rather than < 0: Transport.read blocks for bytes, so a zero
+            // would be an adapter with no way of ever making progress, and
+            // looping on it is a spin.
             int r = transport.read(rx, rxEnd, rx.length - rxEnd);
-            if (r < 0) return false;
-            if (r == 0) {
-                // Timeout with the link still up (USB). Not a busy loop: the
-                // transport already blocked for its timeout.
-                if (!running) return false;
-                continue;
-            }
+            if (r <= 0) return false;
             rxEnd += r;
         }
         return true;

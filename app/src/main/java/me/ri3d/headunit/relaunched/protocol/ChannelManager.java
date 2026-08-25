@@ -2,8 +2,6 @@ package me.ri3d.headunit.relaunched.protocol;
 
 import android.view.Surface;
 
-import java.io.IOException;
-
 import me.ri3d.headunit.relaunched.Config;
 import me.ri3d.headunit.relaunched.audio.AudioChannel;
 import me.ri3d.headunit.relaunched.audio.MicChannel;
@@ -53,7 +51,7 @@ public final class ChannelManager {
         video.setSurface(s);
     }
 
-    public void onMessage(int channel, int msgId, byte[] buf, int off, int len) throws IOException {
+    public void onMessage(int channel, int msgId, byte[] buf, int off, int len) {
         // Every non-control message, before dispatch. Media data is frequent, so
         // this is gated on the log level -- but when the phone goes quiet it is
         // the difference between "it sent nothing" and "we ignored it".
